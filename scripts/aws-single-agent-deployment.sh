@@ -134,8 +134,19 @@ cd /home/ubuntu
 sudo -u ubuntu git clone https://github.com/projnanda/NEST.git nanda-agent-$AGENT_ID
 cd nanda-agent-$AGENT_ID
 
-# Switch to MCP tooling branch
-sudo -u ubuntu git checkout feature/mcp-tooling
+# List available branches and switch to MCP tooling branch
+echo "Available branches:"
+sudo -u ubuntu git branch -a
+echo "Current branch before checkout:"
+sudo -u ubuntu git branch
+echo "Attempting to checkout feature/mcp-tooling..."
+if sudo -u ubuntu git checkout feature/mcp-tooling; then
+    echo "Successfully checked out feature/mcp-tooling"
+    sudo -u ubuntu git branch
+else
+    echo "Failed to checkout feature/mcp-tooling, staying on main"
+    sudo -u ubuntu git branch
+fi
 
 # Create virtual environment and install
 sudo -u ubuntu python3 -m venv env

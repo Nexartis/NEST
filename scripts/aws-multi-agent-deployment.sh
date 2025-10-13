@@ -145,6 +145,9 @@ apt-get install -y python3 python3-venv python3-pip git curl jq supervisor
 cd /home/ubuntu
 sudo -u ubuntu git clone https://github.com/projnanda/NEST.git nanda-multi-agents
 cd nanda-multi-agents
+sudo -u ubuntu git checkout feature/mcp-tooling
+cd ..
+cd nanda-multi-agents
 sudo -u ubuntu python3 -m venv env
 sudo -u ubuntu bash -c "source env/bin/activate && pip install --upgrade pip && pip install -e . && pip install anthropic"
 
