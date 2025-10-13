@@ -28,29 +28,53 @@ class MCPClient:
     async def connect_to_server(self, server_url: str, transport_type: str = "http") -> Optional[List[Any]]:
         """Connect to MCP server and return available tools"""
         try:
+            import logging
+            logger = logging.getLogger(__name__)
+            
+            logger.info(f"🔌 [MCPClient] Connecting to MCP server: {server_url}")
+            logger.info(f"🔌 [MCPClient] Transport type: {transport_type}")
+            
             if transport_type.lower() == "sse":
+                logger.info(f"🔌 [MCPClient] Using SSE transport")
                 transport = await self.exit_stack.enter_async_context(sse_client(server_url))
                 read_stream, write_stream = transport
             else:
+                logger.info(f"🔌 [MCPClient] Using HTTP transport")
                 transport = await self.exit_stack.enter_async_context(streamablehttp_client(server_url))
                 read_stream, write_stream, _ = transport
 
+            logger.info(f"🔌 [MCPClient] Creating MCP session...")
             self.session = await self.exit_stack.enter_async_context(
                 mcp.ClientSession(read_stream, write_stream)
             )
+            
+            logger.info(f"🔌 [MCPClient] Initializing MCP session...")
             await self.session.initialize()
 
+            logger.info(f"🔌 [MCPClient] Listing available tools...")
             tools_result = await self.session.list_tools()
+            
+            logger.info(f"🔌 [MCPClient] Found {len(tools_result.tools) if tools_result.tools else 0} tools")
+            for tool in (tools_result.tools or []):
+                logger.info(f"🔌 [MCPClient] Tool: {tool.name} - {tool.description}")
+                
             return tools_result.tools
         except Exception as e:
-            print(f"Error connecting to MCP server: {e}")
+            logger.error(f"❌ [MCPClient] Error connecting to MCP server: {e}")
             return None
 
     async def execute_query(self, query: str, server_url: str, transport_type: str = "http") -> str:
         """Execute query on MCP server without message improvement"""
         try:
+            import logging
+            logger = logging.getLogger(__name__)
+            
+            logger.info(f"🎯 [MCPClient] Executing query: {query}")
+            logger.info(f"🎯 [MCPClient] Server URL: {server_url}")
+            
             tools = await self.connect_to_server(server_url, transport_type)
             if not tools:
+                logger.error(f"❌ [MCPClient] Failed to connect to MCP server")
                 return "Failed to connect to MCP server"
 
             available_tools = [{
@@ -58,8 +82,11 @@ class MCPClient:
                 "description": tool.description,
                 "input_schema": tool.inputSchema
             } for tool in tools]
+            
+            logger.info(f"🎯 [MCPClient] Available tools for Claude: {[t['name'] for t in available_tools]}")
 
             messages = [{"role": "user", "content": query}]
+            logger.info(f"🎯 [MCPClient] Sending query to Claude with {len(available_tools)} tools")
 
             message = self.anthropic.messages.create(
                 model="claude-3-5-sonnet-20241022",
@@ -67,6 +94,8 @@ class MCPClient:
                 messages=messages,
                 tools=available_tools
             )
+            
+            logger.info(f"🎯 [MCPClient] Claude response received with {len(message.content)} content blocks")
 
             while True:
                 has_tool_calls = False
@@ -74,8 +103,14 @@ class MCPClient:
                 for block in message.content:
                     if block.type == "tool_use":
                         has_tool_calls = True
+                        logger.info(f"🔧 [MCPClient] Claude wants to use tool: {block.name}")
+                        logger.info(f"🔧 [MCPClient] Tool input: {block.input}")
+                        
                         result = await self.session.call_tool(block.name, block.input)
+                        logger.info(f"🔧 [MCPClient] Raw tool result: {str(result)[:300]}...")
+                        
                         processed_result = self._parse_result(result)
+                        logger.info(f"🔧 [MCPClient] Processed tool result: {str(processed_result)[:300]}...")
 
                         messages.append({
                             "role": "assistant",
@@ -239,44 +274,75 @@ class MCPRegistry:
         """Query registry for MCP server configuration"""
         try:
             import requests
+            import logging
+            logger = logging.getLogger(__name__)
 
-            response = requests.get(f"{self.registry_url}/get_mcp_registry", params={
+            query_url = f"{self.registry_url}/get_mcp_registry"
+            params = {
                 'registry_provider': registry_provider,
                 'qualified_name': qualified_name
-            })
-
+            }
+            
+            logger.info(f"🌐 [MCPRegistry] Querying registry: {query_url} with params: {params}")
+            
+            response = requests.get(query_url, params=params)
+            
+            logger.info(f"🌐 [MCPRegistry] Registry response status: {response.status_code}")
+            
             if response.status_code == 200:
                 result = response.json()
+                logger.info(f"🌐 [MCPRegistry] Registry response data: {result}")
+                
                 endpoint = result.get("endpoint")
                 config = result.get("config")
                 config_json = json.loads(config) if isinstance(config, str) else config
                 registry_name = result.get("registry_provider")
 
-                return {
+                server_config = {
                     "endpoint": endpoint,
                     "config": config_json,
                     "registry_provider": registry_name
                 }
-            return None
+                
+                logger.info(f"🌐 [MCPRegistry] Parsed server config: {server_config}")
+                return server_config
+            else:
+                logger.warning(f"🌐 [MCPRegistry] Registry query failed with status {response.status_code}: {response.text}")
+                return None
 
         except Exception as e:
-            print(f"Error querying MCP registry: {e}")
+            logger.error(f"❌ [MCPRegistry] Error querying MCP registry: {e}")
             return None
 
     def build_server_url(self, endpoint: str, config: Dict[str, Any], registry_provider: str) -> Optional[str]:
         """Build the final MCP server URL with authentication"""
         try:
+            import logging
+            logger = logging.getLogger(__name__)
+            
+            logger.info(f"🔧 [MCPRegistry] Building server URL for {registry_provider}")
+            logger.info(f"🔧 [MCPRegistry] Endpoint: {endpoint}")
+            logger.info(f"🔧 [MCPRegistry] Config: {config}")
+            
             if registry_provider == "smithery":
                 if not self.smithery_api_key:
-                    print("SMITHERY_API_KEY not found in environment")
+                    logger.error(f"❌ [MCPRegistry] SMITHERY_API_KEY not found in environment")
                     return None
 
+                logger.info(f"🔧 [MCPRegistry] Using Smithery API key: {self.smithery_api_key[:10]}...")
+                
                 config_b64 = base64.b64encode(json.dumps(config).encode()).decode()
-                return f"{endpoint}?api_key={self.smithery_api_key}&config={config_b64}"
+                logger.info(f"🔧 [MCPRegistry] Config base64 encoded: {config_b64[:50]}...")
+                
+                final_url = f"{endpoint}?api_key={self.smithery_api_key}&config={config_b64}"
+                logger.info(f"🔧 [MCPRegistry] Final Smithery URL: {final_url[:100]}...")
+                
+                return final_url
             else:
+                logger.info(f"🔧 [MCPRegistry] Using direct endpoint for {registry_provider}: {endpoint}")
                 return endpoint
         except Exception as e:
-            print(f"Error building server URL: {e}")
+            logger.error(f"❌ [MCPRegistry] Error building server URL: {e}")
             return None
 
     def lookup_nanda_mcp_server(self, server_name: str) -> Optional[str]:
@@ -306,6 +372,13 @@ class MCPRegistry:
     def execute_mcp_query_sync(self, server_url: str, query: str) -> str:
         """Execute MCP query synchronously"""
         try:
+            import logging
+            logger = logging.getLogger(__name__)
+            
+            logger.info(f"🚀 [MCPRegistry] Starting MCP query execution")
+            logger.info(f"🚀 [MCPRegistry] Server URL: {server_url}")
+            logger.info(f"🚀 [MCPRegistry] Query: {query}")
+            
             # Run async MCP query in a new event loop
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
@@ -313,15 +386,19 @@ class MCPRegistry:
             try:
                 async def run_query():
                     async with MCPClient() as client:
-                        return await client.execute_query(query, server_url)
+                        logger.info(f"🚀 [MCPRegistry] MCPClient created, executing query...")
+                        result = await client.execute_query(query, server_url)
+                        logger.info(f"🚀 [MCPRegistry] MCP query result: {str(result)[:200]}...")
+                        return result
                 
                 result = loop.run_until_complete(run_query())
+                logger.info(f"✅ [MCPRegistry] MCP query completed successfully")
                 return result
             finally:
                 loop.close()
                 
         except Exception as e:
-            print(f"Error executing MCP query: {e}")
+            logger.error(f"❌ [MCPRegistry] Error executing MCP query: {e}")
             return f"Error executing MCP query: {str(e)}"
 
     def handle_nanda_mcp_query(self, server_name: str, query: str) -> str:
@@ -342,16 +419,30 @@ class MCPRegistry:
     def handle_smithery_mcp_query(self, server_name: str, query: str) -> str:
         """Handle Smithery MCP registry queries"""
         try:
+            import logging
+            logger = logging.getLogger(__name__)
+            
+            logger.info(f"🏭 [SmitheryMCP] Starting Smithery MCP query for server: {server_name}")
+            logger.info(f"🏭 [SmitheryMCP] Query: {query}")
+            
             if not self.smithery_api_key:
+                logger.error(f"❌ [SmitheryMCP] SMITHERY_API_KEY not found in environment variables")
                 return "❌ SMITHERY_API_KEY not found in environment variables"
             
+            logger.info(f"🏭 [SmitheryMCP] Using Smithery API key: {self.smithery_api_key[:10]}...")
+            
             # Query Smithery registry via NANDA registry service
+            logger.info(f"🏭 [SmitheryMCP] Querying registry for Smithery server config...")
             server_config = self.get_server_config("smithery", server_name)
             
             if not server_config:
+                logger.error(f"❌ [SmitheryMCP] Smithery MCP server '{server_name}' not found in registry")
                 return f"❌ Smithery MCP server '{server_name}' not found"
             
+            logger.info(f"🏭 [SmitheryMCP] Got server config: {server_config}")
+            
             # Build server URL with authentication
+            logger.info(f"🏭 [SmitheryMCP] Building authenticated server URL...")
             server_url = self.build_server_url(
                 server_config["endpoint"], 
                 server_config["config"], 
@@ -359,11 +450,18 @@ class MCPRegistry:
             )
             
             if not server_url:
+                logger.error(f"❌ [SmitheryMCP] Failed to build Smithery MCP server URL for '{server_name}'")
                 return f"❌ Failed to build Smithery MCP server URL for '{server_name}'"
             
+            logger.info(f"🏭 [SmitheryMCP] Built server URL: {server_url[:100]}...")
+            
             # Execute MCP query
+            logger.info(f"🏭 [SmitheryMCP] Executing MCP query...")
             result = self.execute_mcp_query_sync(server_url, query)
+            
+            logger.info(f"🏭 [SmitheryMCP] Query completed, result length: {len(str(result))}")
             return f"🔧 Smithery MCP [{server_name}]: {result}"
             
         except Exception as e:
+            logger.error(f"❌ [SmitheryMCP] Error querying Smithery MCP server: {e}", exc_info=True)
             return f"❌ Error querying Smithery MCP server: {str(e)}"

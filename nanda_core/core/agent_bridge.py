@@ -69,6 +69,7 @@ class SimpleAgentBridge(A2AServer):
                 return self._handle_command(user_text, msg, conversation_id)
             elif user_text.startswith("#"):
                 # MCP server message
+                logger.info(f"🔧 [{self.agent_id}] Detected MCP message: {user_text}")
                 return self._handle_mcp_message(user_text, msg, conversation_id)
             else:
                 # Regular message - use agent logic
