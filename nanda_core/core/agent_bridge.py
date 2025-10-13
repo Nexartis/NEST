@@ -58,19 +58,23 @@ class SimpleAgentBridge(A2AServer):
             return self._handle_incoming_agent_message(user_text, msg, conversation_id)
         
         logger.info(f"📨 [{self.agent_id}] Received: {user_text}")
+        logger.info(f"📨 [{self.agent_id}] Message starts with: '{user_text[0] if user_text else 'EMPTY'}'")
         
         # Handle different message types
         try:
             if user_text.startswith("@"):
                 # Agent-to-agent message (outgoing)
+                logger.info(f"🔄 [{self.agent_id}] Processing @ message")
                 return self._handle_agent_message(user_text, msg, conversation_id)
-            elif user_text.startswith("/"):
-                # System command
-                return self._handle_command(user_text, msg, conversation_id)
             elif user_text.startswith("#"):
                 # MCP server message
                 logger.info(f"🔧 [{self.agent_id}] Detected MCP message: {user_text}")
+                logger.info(f"🔧 [{self.agent_id}] MCP_AVAILABLE: {MCP_AVAILABLE}")
                 return self._handle_mcp_message(user_text, msg, conversation_id)
+            elif user_text.startswith("/"):
+                # System command
+                logger.info(f"⚙️ [{self.agent_id}] Processing / command")
+                return self._handle_command(user_text, msg, conversation_id)
             else:
                 # Regular message - use agent logic
                 if self.telemetry:
@@ -184,30 +188,41 @@ class SimpleAgentBridge(A2AServer):
     
     def _handle_mcp_message(self, user_text: str, msg: Message, conversation_id: str) -> Message:
         """Handle MCP server messages (#registry:server-name query)"""
+        logger.info(f"🚀 [{self.agent_id}] _handle_mcp_message called with: {user_text}")
+        logger.info(f"🚀 [{self.agent_id}] MCP_AVAILABLE check: {MCP_AVAILABLE}")
+        
         if not MCP_AVAILABLE:
+            logger.error(f"❌ [{self.agent_id}] MCP not available!")
             return self._create_response(
                 msg, conversation_id,
                 "❌ MCP support not available. Please install required dependencies."
             )
         
         try:
+            logger.info(f"🔧 [{self.agent_id}] Starting MCP message parsing...")
+            
             # Parse the MCP message format: #registry:server-name query
             if ':' not in user_text:
+                logger.error(f"❌ [{self.agent_id}] No colon found in MCP message: {user_text}")
                 return self._create_response(
                     msg, conversation_id,
                     "❌ Invalid MCP message format. Use: #registry:server-name query"
                 )
             
             # Extract registry and the rest
+            logger.info(f"🔧 [{self.agent_id}] Splitting message at first colon...")
             registry_part, rest = user_text[1:].split(':', 1)
+            logger.info(f"🔧 [{self.agent_id}] Registry part: '{registry_part}', Rest: '{rest}'")
             
             if ' ' not in rest:
+                logger.error(f"❌ [{self.agent_id}] No space found in rest part: {rest}")
                 return self._create_response(
                     msg, conversation_id,
                     "❌ Invalid MCP message format. Use: #registry:server-name query"
                 )
             
             server_name, query = rest.split(' ', 1)
+            logger.info(f"🔧 [{self.agent_id}] Parsed - Server: '{server_name}', Query: '{query}'")
             
             logger.info(f"🔧 [{self.agent_id}] MCP Request: registry={registry_part}, server={server_name}, query={query[:50]}...")
             
