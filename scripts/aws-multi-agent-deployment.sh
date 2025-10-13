@@ -5,16 +5,17 @@
 
 set -e
 
-# Parse arguments (same as original)
+# Parse arguments
 ANTHROPIC_API_KEY="$1"
 AGENT_CONFIG_JSON="$2"
-REGISTRY_URL="${3:-http://registry.chat39.com:6900}"
-REGION="${4:-us-east-1}"
-INSTANCE_TYPE="${5:-t3.large}"  # Upgraded for 10 agents
+SMITHERY_API_KEY="$3"
+REGISTRY_URL="${4:-http://registry.chat39.com:6900}"
+REGION="${5:-us-east-1}"
+INSTANCE_TYPE="${6:-t3.large}"  # Upgraded for 10 agents
 
-# Validation (same as original)
-if [ -z "$ANTHROPIC_API_KEY" ] || [ -z "$AGENT_CONFIG_JSON" ]; then
-    echo "❌ Usage: $0 <ANTHROPIC_API_KEY> <AGENT_CONFIG_JSON> [REGISTRY_URL] [REGION] [INSTANCE_TYPE]"
+# Validation
+if [ -z "$ANTHROPIC_API_KEY" ] || [ -z "$AGENT_CONFIG_JSON" ] || [ -z "$SMITHERY_API_KEY" ]; then
+    echo "❌ Usage: $0 <ANTHROPIC_API_KEY> <AGENT_CONFIG_JSON> <SMITHERY_API_KEY> [REGISTRY_URL] [REGION] [INSTANCE_TYPE]"
     exit 1
 fi
 
@@ -200,6 +201,7 @@ stderr_logfile=/var/log/agent_\$AGENT_ID.err.log
 stdout_logfile=/var/log/agent_\$AGENT_ID.out.log
 environment=
     ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY",
+    SMITHERY_API_KEY="$SMITHERY_API_KEY",
     AGENT_ID="\$AGENT_ID",
     AGENT_NAME="\$AGENT_NAME",
     AGENT_DOMAIN="\$DOMAIN",

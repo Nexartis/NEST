@@ -9,8 +9,16 @@ import os
 import uuid
 import logging
 import requests
+import asyncio
 from typing import Callable, Optional, Dict, Any
 from python_a2a import A2AServer, A2AClient, Message, TextContent, MessageRole, Metadata
+
+# MCP imports
+try:
+    from .mcp_client import MCPClient, MCPRegistry
+    MCP_AVAILABLE = True
+except ImportError:
+    MCP_AVAILABLE = False
 
 # Configure logger to capture conversation logs
 logger = logging.getLogger(__name__)
@@ -23,12 +31,14 @@ class SimpleAgentBridge(A2AServer):
                  agent_id: str, 
                  agent_logic: Callable[[str, str], str],
                  registry_url: Optional[str] = None,
-                 telemetry = None):
+                 telemetry = None,
+                 mcp_registry_url: Optional[str] = None):
         super().__init__()
         self.agent_id = agent_id
         self.agent_logic = agent_logic
         self.registry_url = registry_url
         self.telemetry = telemetry
+        self.mcp_registry_url = mcp_registry_url or registry_url
         
     def handle_message(self, msg: Message) -> Message:
         """Handle incoming messages"""
@@ -57,6 +67,9 @@ class SimpleAgentBridge(A2AServer):
             elif user_text.startswith("/"):
                 # System command
                 return self._handle_command(user_text, msg, conversation_id)
+            elif user_text.startswith("#"):
+                # MCP server message
+                return self._handle_mcp_message(user_text, msg, conversation_id)
             else:
                 # Regular message - use agent logic
                 if self.telemetry:
@@ -146,7 +159,9 @@ class SimpleAgentBridge(A2AServer):
 /help - Show this help
 /ping - Test agent responsiveness  
 /status - Show agent status
-@agent_id message - Send message to another agent"""
+@agent_id message - Send message to another agent
+#nanda:server-name query - Query NANDA MCP server
+#smithery:server-name query - Query Smithery MCP server"""
             return self._create_response(msg, conversation_id, help_text)
         
         elif command == "ping":
@@ -156,12 +171,72 @@ class SimpleAgentBridge(A2AServer):
             status = f"Agent: {self.agent_id}, Status: Running"
             if self.registry_url:
                 status += f", Registry: {self.registry_url}"
+            if self.mcp_registry_url:
+                status += f", MCP Registry: {self.mcp_registry_url}"
             return self._create_response(msg, conversation_id, status)
         
         else:
             return self._create_response(
                 msg, conversation_id,
                 f"Unknown command: {command}. Use /help for available commands"
+            )
+    
+    def _handle_mcp_message(self, user_text: str, msg: Message, conversation_id: str) -> Message:
+        """Handle MCP server messages (#registry:server-name query)"""
+        if not MCP_AVAILABLE:
+            return self._create_response(
+                msg, conversation_id,
+                "❌ MCP support not available. Please install required dependencies."
+            )
+        
+        try:
+            # Parse the MCP message format: #registry:server-name query
+            if ':' not in user_text:
+                return self._create_response(
+                    msg, conversation_id,
+                    "❌ Invalid MCP message format. Use: #registry:server-name query"
+                )
+            
+            # Extract registry and the rest
+            registry_part, rest = user_text[1:].split(':', 1)
+            
+            if ' ' not in rest:
+                return self._create_response(
+                    msg, conversation_id,
+                    "❌ Invalid MCP message format. Use: #registry:server-name query"
+                )
+            
+            server_name, query = rest.split(' ', 1)
+            
+            logger.info(f"🔧 [{self.agent_id}] MCP Request: registry={registry_part}, server={server_name}, query={query[:50]}...")
+            
+            if not self.mcp_registry_url:
+                return self._create_response(
+                    msg, conversation_id,
+                    "❌ MCP registry URL not configured"
+                )
+            
+            # Create MCP registry instance and handle query
+            mcp_registry = MCPRegistry(self.mcp_registry_url)
+            
+            # Handle different registry types using modular functions
+            if registry_part.lower() == "nanda":
+                result = mcp_registry.handle_nanda_mcp_query(server_name, query)
+            elif registry_part.lower() == "smithery":
+                result = mcp_registry.handle_smithery_mcp_query(server_name, query)
+            else:
+                result = f"❌ Unknown MCP registry: {registry_part}. Supported: nanda, smithery"
+            
+            if self.telemetry:
+                self.telemetry.log_message_received(self.agent_id, conversation_id)
+            
+            return self._create_response(msg, conversation_id, result)
+                
+        except Exception as e:
+            logger.error(f"❌ [{self.agent_id}] Error processing MCP message: {e}")
+            return self._create_response(
+                msg, conversation_id,
+                f"❌ Error processing MCP message: {str(e)}"
             )
     
     def _send_to_agent(self, target_agent_id: str, message_text: str, conversation_id: str) -> str:

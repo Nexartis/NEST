@@ -189,3 +189,92 @@ class MCPRegistry:
         except Exception as e:
             print(f"Error building server URL: {e}")
             return None
+
+    def lookup_nanda_mcp_server(self, server_name: str) -> Optional[str]:
+        """Look up NANDA MCP server URL from MongoDB registry"""
+        try:
+            import requests
+            
+            # Query NANDA MCP registry endpoint
+            response = requests.get(
+                f"{self.registry_url}/mcp_servers/{server_name}", 
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                server_url = data.get("server_url") or data.get("endpoint")
+                print(f"Found NANDA MCP server {server_name}: {server_url}")
+                return server_url
+            else:
+                print(f"NANDA MCP server {server_name} not found (status: {response.status_code})")
+                return None
+                
+        except Exception as e:
+            print(f"Error looking up NANDA MCP server {server_name}: {e}")
+            return None
+
+    def execute_mcp_query_sync(self, server_url: str, query: str) -> str:
+        """Execute MCP query synchronously"""
+        try:
+            # Run async MCP query in a new event loop
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
+            try:
+                async def run_query():
+                    async with MCPClient() as client:
+                        return await client.execute_query(query, server_url)
+                
+                result = loop.run_until_complete(run_query())
+                return result
+            finally:
+                loop.close()
+                
+        except Exception as e:
+            print(f"Error executing MCP query: {e}")
+            return f"Error executing MCP query: {str(e)}"
+
+    def handle_nanda_mcp_query(self, server_name: str, query: str) -> str:
+        """Handle NANDA MCP registry queries"""
+        try:
+            # Query NANDA MCP registry (MongoDB collection)
+            server_url = self.lookup_nanda_mcp_server(server_name)
+            if not server_url:
+                return f"❌ MCP server '{server_name}' not found in NANDA registry"
+            
+            # Execute MCP query
+            result = self.execute_mcp_query_sync(server_url, query)
+            return f"🔧 NANDA MCP [{server_name}]: {result}"
+            
+        except Exception as e:
+            return f"❌ Error querying NANDA MCP server: {str(e)}"
+
+    def handle_smithery_mcp_query(self, server_name: str, query: str) -> str:
+        """Handle Smithery MCP registry queries"""
+        try:
+            if not self.smithery_api_key:
+                return "❌ SMITHERY_API_KEY not found in environment variables"
+            
+            # Query Smithery registry via NANDA registry service
+            server_config = self.get_server_config("smithery", server_name)
+            
+            if not server_config:
+                return f"❌ Smithery MCP server '{server_name}' not found"
+            
+            # Build server URL with authentication
+            server_url = self.build_server_url(
+                server_config["endpoint"], 
+                server_config["config"], 
+                "smithery"
+            )
+            
+            if not server_url:
+                return f"❌ Failed to build Smithery MCP server URL for '{server_name}'"
+            
+            # Execute MCP query
+            result = self.execute_mcp_query_sync(server_url, query)
+            return f"🔧 Smithery MCP [{server_name}]: {result}"
+            
+        except Exception as e:
+            return f"❌ Error querying Smithery MCP server: {str(e)}"

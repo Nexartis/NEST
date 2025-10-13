@@ -8,14 +8,15 @@ set -e
 AGENT_TYPE=$1
 AGENT_ID=$2
 ANTHROPIC_API_KEY=$3
-PORT=${4:-6000}
-REGISTRY_URL=${5:-""}
+SMITHERY_API_KEY=$4
+PORT=${5:-6000}
+REGISTRY_URL=${6:-""}
 
-if [ -z "$AGENT_TYPE" ] || [ -z "$AGENT_ID" ] || [ -z "$ANTHROPIC_API_KEY" ]; then
+if [ -z "$AGENT_TYPE" ] || [ -z "$AGENT_ID" ] || [ -z "$ANTHROPIC_API_KEY" ] || [ -z "$SMITHERY_API_KEY" ]; then
   echo "🤖 Simple NANDA Agent Deployment"
   echo "================================="
   echo ""
-  echo "Usage: bash deploy-agent.sh <AGENT_TYPE> <AGENT_ID> <ANTHROPIC_API_KEY> [PORT] [REGISTRY_URL]"
+  echo "Usage: bash deploy-agent.sh <AGENT_TYPE> <AGENT_ID> <ANTHROPIC_API_KEY> <SMITHERY_API_KEY> [PORT] [REGISTRY_URL]"
   echo ""
   echo "Agent Types:"
   echo "  • helpful    - General helpful agent"
@@ -24,9 +25,9 @@ if [ -z "$AGENT_TYPE" ] || [ -z "$AGENT_ID" ] || [ -z "$ANTHROPIC_API_KEY" ]; th
   echo "  • analyst    - LangChain document analyst (requires LangChain)"
   echo ""
   echo "Examples:"
-  echo "  bash deploy-agent.sh helpful my_agent sk-ant-xxxxx"
-  echo "  bash deploy-agent.sh analyst doc_analyzer sk-ant-xxxxx 6020"
-  echo "  bash deploy-agent.sh pirate captain_jack sk-ant-xxxxx 6000 https://registry.example.com"
+  echo "  bash deploy-agent.sh helpful my_agent sk-ant-xxxxx smithery-key-xxxxx"
+  echo "  bash deploy-agent.sh analyst doc_analyzer sk-ant-xxxxx smithery-key-xxxxx 6020"
+  echo "  bash deploy-agent.sh pirate captain_jack sk-ant-xxxxx smithery-key-xxxxx 6000 https://registry.example.com"
   echo ""
   exit 1
 fi
@@ -107,8 +108,9 @@ Port: $PORT
 import os
 import sys
 
-# Set API key
+# Set API keys
 os.environ["ANTHROPIC_API_KEY"] = "$ANTHROPIC_API_KEY"
+os.environ["SMITHERY_API_KEY"] = "$SMITHERY_API_KEY"
 
 # Add project to path
 sys.path.append(os.path.dirname(__file__))
