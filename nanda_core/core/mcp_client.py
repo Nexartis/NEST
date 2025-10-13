@@ -117,19 +117,108 @@ class MCPClient:
             return f"Error: {str(e)}"
 
     def _parse_result(self, response: Any) -> str:
-        """Parse JSON-RPC responses from MCP server"""
+        """Parse JSON-RPC responses from MCP server and format as readable key-value pairs"""
         if isinstance(response, str):
             try:
                 response_json = json.loads(response)
-                if isinstance(response_json, dict) and "result" in response_json:
-                    artifacts = response_json["result"].get("artifacts", [])
-                    if artifacts and len(artifacts) > 0:
-                        parts = artifacts[0].get("parts", [])
-                        if parts and len(parts) > 0:
-                            return parts[0].get("text", str(response))
+                if isinstance(response_json, dict):
+                    # Handle MCP JSON-RPC format
+                    if "result" in response_json:
+                        artifacts = response_json["result"].get("artifacts", [])
+                        if artifacts and len(artifacts) > 0:
+                            parts = artifacts[0].get("parts", [])
+                            if parts and len(parts) > 0:
+                                text_content = parts[0].get("text", "")
+                                return self._format_json_response(text_content)
+                    
+                    # Handle direct JSON data (like weather responses)
+                    return self._format_json_response(response_json)
+                    
             except json.JSONDecodeError:
-                pass
+                # Try to extract JSON from text response
+                return self._extract_and_format_json(response)
+        
+        # Handle dict responses directly
+        if isinstance(response, dict):
+            return self._format_json_response(response)
+            
         return str(response)
+
+    def _format_json_response(self, data: Any) -> str:
+        """Format JSON data into readable key-value pairs"""
+        try:
+            if isinstance(data, str):
+                try:
+                    data = json.loads(data)
+                except json.JSONDecodeError:
+                    return data
+            
+            if isinstance(data, dict):
+                formatted = []
+                for key, value in data.items():
+                    if isinstance(value, dict):
+                        # Nested objects
+                        formatted.append(f"📋 {key.replace('_', ' ').title()}:")
+                        for sub_key, sub_value in value.items():
+                            formatted.append(f"  • {sub_key.replace('_', ' ').title()}: {sub_value}")
+                    elif isinstance(value, list):
+                        # Arrays
+                        formatted.append(f"📋 {key.replace('_', ' ').title()}:")
+                        for i, item in enumerate(value[:5]):  # Limit to first 5 items
+                            if isinstance(item, dict):
+                                formatted.append(f"  [{i+1}]")
+                                for sub_key, sub_value in item.items():
+                                    formatted.append(f"    • {sub_key.replace('_', ' ').title()}: {sub_value}")
+                            else:
+                                formatted.append(f"  • {item}")
+                        if len(value) > 5:
+                            formatted.append(f"  ... and {len(value) - 5} more items")
+                    else:
+                        # Simple key-value
+                        formatted.append(f"🔹 {key.replace('_', ' ').title()}: {value}")
+                
+                return "\n".join(formatted)
+            
+            elif isinstance(data, list):
+                formatted = []
+                for i, item in enumerate(data[:10]):  # Limit to first 10 items
+                    if isinstance(item, dict):
+                        formatted.append(f"📋 Item {i+1}:")
+                        for key, value in item.items():
+                            formatted.append(f"  • {key.replace('_', ' ').title()}: {value}")
+                    else:
+                        formatted.append(f"🔹 Item {i+1}: {item}")
+                
+                if len(data) > 10:
+                    formatted.append(f"... and {len(data) - 10} more items")
+                
+                return "\n".join(formatted)
+            
+            else:
+                return str(data)
+                
+        except Exception as e:
+            return f"📄 Raw Response: {str(data)}"
+
+    def _extract_and_format_json(self, text: str) -> str:
+        """Extract JSON from text and format it"""
+        try:
+            # Look for JSON patterns in the text
+            import re
+            json_match = re.search(r'\{.*\}', text, re.DOTALL)
+            if json_match:
+                json_str = json_match.group(0)
+                try:
+                    data = json.loads(json_str)
+                    return self._format_json_response(data)
+                except json.JSONDecodeError:
+                    pass
+            
+            # If no JSON found, return original text
+            return text
+            
+        except Exception:
+            return text
 
     async def __aenter__(self):
         return self
