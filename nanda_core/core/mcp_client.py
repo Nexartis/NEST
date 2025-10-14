@@ -358,24 +358,28 @@ class MCPRegistry:
     def lookup_nanda_mcp_server(self, server_name: str) -> Optional[str]:
         """Look up NANDA MCP server URL from MongoDB registry"""
         try:
+            logger = logging.getLogger(__name__)
             
             # Query NANDA MCP registry endpoint
-            response = requests.get(
-                f"{self.registry_url}/mcp_servers/{server_name}", 
-                timeout=10
-            )
+            lookup_url = f"{self.registry_url}/mcp_servers/{server_name}"
+            logger.info(f"🔍 [NANDA-MCP] Looking up server '{server_name}' at: {lookup_url}")
+            
+            response = requests.get(lookup_url, timeout=10)
+            
+            logger.info(f"🔍 [NANDA-MCP] Registry response status: {response.status_code}")
             
             if response.status_code == 200:
                 data = response.json()
                 server_url = data.get("server_url") or data.get("endpoint")
-                print(f"Found NANDA MCP server {server_name}: {server_url}")
+                logger.info(f"✅ [NANDA-MCP] Found server {server_name}: {server_url}")
                 return server_url
             else:
-                print(f"NANDA MCP server {server_name} not found (status: {response.status_code})")
+                logger.error(f"❌ [NANDA-MCP] Server {server_name} not found (status: {response.status_code})")
+                logger.error(f"❌ [NANDA-MCP] Response: {response.text[:200]}...")
                 return None
                 
         except Exception as e:
-            print(f"Error looking up NANDA MCP server {server_name}: {e}")
+            logger.error(f"❌ [NANDA-MCP] Error looking up server {server_name}: {e}")
             return None
 
     def execute_mcp_query_sync(self, server_url: str, query: str) -> str:
