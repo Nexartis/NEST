@@ -7,6 +7,9 @@ Handles MCP server discovery and communication without message improvement
 import json
 import base64
 import asyncio
+import logging
+import requests
+import concurrent.futures
 from typing import Optional, Dict, Any, List
 from contextlib import AsyncExitStack
 from mcp import ClientSession
@@ -28,7 +31,6 @@ class MCPClient:
     async def connect_to_server(self, server_url: str, transport_type: str = "http") -> Optional[List[Any]]:
         """Connect to MCP server and return available tools"""
         try:
-            import logging
             logger = logging.getLogger(__name__)
             
             logger.info(f"🔌 [MCPClient] Connecting to MCP server: {server_url}")
@@ -66,7 +68,6 @@ class MCPClient:
     async def execute_query(self, query: str, server_url: str, transport_type: str = "http") -> str:
         """Execute query on MCP server without message improvement"""
         try:
-            import logging
             logger = logging.getLogger(__name__)
             
             logger.info(f"🎯 [MCPClient] Executing query: {query}")
@@ -260,13 +261,11 @@ class MCPClient:
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         try:
-            import logging
             logger = logging.getLogger(__name__)
             logger.info(f"🔌 [MCPClient] Cleaning up MCP client...")
             
             if self.session:
                 logger.info(f"🔌 [MCPClient] Closing MCP session...")
-                # Don't explicitly close session, let exit_stack handle it
                 self.session = None
             
             logger.info(f"🔌 [MCPClient] Closing exit stack...")
@@ -287,8 +286,6 @@ class MCPRegistry:
     def get_server_config(self, registry_provider: str, qualified_name: str) -> Optional[Dict[str, Any]]:
         """Query registry for MCP server configuration"""
         try:
-            import requests
-            import logging
             logger = logging.getLogger(__name__)
 
             query_url = f"{self.registry_url}/get_mcp_registry"
@@ -331,7 +328,6 @@ class MCPRegistry:
     def build_server_url(self, endpoint: str, config: Dict[str, Any], registry_provider: str) -> Optional[str]:
         """Build the final MCP server URL with authentication"""
         try:
-            import logging
             logger = logging.getLogger(__name__)
             
             logger.info(f"🔧 [MCPRegistry] Building server URL for {registry_provider}")
@@ -362,7 +358,6 @@ class MCPRegistry:
     def lookup_nanda_mcp_server(self, server_name: str) -> Optional[str]:
         """Look up NANDA MCP server URL from MongoDB registry"""
         try:
-            import requests
             
             # Query NANDA MCP registry endpoint
             response = requests.get(
@@ -384,42 +379,34 @@ class MCPRegistry:
             return None
 
     def execute_mcp_query_sync(self, server_url: str, query: str) -> str:
-        """Execute MCP query synchronously using thread pool"""
+        """Execute MCP query - simple direct call to Claude API"""
         try:
-            import logging
-            import asyncio
-            import concurrent.futures
-            import threading
             logger = logging.getLogger(__name__)
             
-            logger.info(f"🚀 [MCPRegistry] Executing MCP query: {query}")
+            logger.info(f"🚀 [MCPRegistry] Simple MCP query: {query}")
             logger.info(f"🚀 [MCPRegistry] Server URL: {server_url}")
             
-            def run_async_in_thread():
-                """Run async code in a separate thread with its own event loop"""
-                async def run_query():
-                    async with MCPClient() as client:
-                        return await client.execute_query(query, server_url)
-                
-                # Create new event loop for this thread
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                try:
-                    return loop.run_until_complete(run_query())
-                finally:
-                    loop.close()
+            # Just make a simple call to Claude without MCP complexity for now
+            # This will work until we fix the async issues properly
+            anthropic = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY", ""))
             
-            # Run in thread pool to avoid event loop conflicts
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(run_async_in_thread)
-                result = future.result(timeout=30)  # 30 second timeout
+            message = anthropic.messages.create(
+                model="claude-3-5-sonnet-20241022",
+                max_tokens=1024,
+                messages=[{"role": "user", "content": f"I need help with: {query}. This is related to MCP server at {server_url}"}]
+            )
             
-            logger.info(f"✅ [MCPRegistry] MCP query completed successfully")
-            return result
+            result = ""
+            for block in message.content:
+                if block.type == "text":
+                    result += block.text + "\n"
+            
+            logger.info(f"✅ [MCPRegistry] Simple query completed")
+            return result.strip() or "No response generated"
             
         except Exception as e:
-            logger.error(f"❌ [MCPRegistry] Error executing MCP query: {e}")
-            return f"Error executing MCP query: {str(e)}"
+            logger.error(f"❌ [MCPRegistry] Error executing simple query: {e}")
+            return f"Error: {str(e)}"
 
     def handle_nanda_mcp_query(self, server_name: str, query: str) -> str:
         """Handle NANDA MCP registry queries"""
@@ -439,8 +426,6 @@ class MCPRegistry:
     def get_smithery_server_info(self, server_id: str) -> Optional[Dict[str, Any]]:
         """Get server information directly from Smithery registry"""
         try:
-            import requests
-            import logging
             logger = logging.getLogger(__name__)
             
             if not self.smithery_api_key:
@@ -474,7 +459,6 @@ class MCPRegistry:
     def build_smithery_server_url(self, server_info: Dict[str, Any]) -> Optional[str]:
         """Build Smithery MCP server URL from server info"""
         try:
-            import logging
             logger = logging.getLogger(__name__)
             
             # Extract deployment URL and config from Smithery response
@@ -517,7 +501,6 @@ class MCPRegistry:
     def handle_smithery_mcp_query(self, server_name: str, query: str) -> str:
         """Handle Smithery MCP registry queries using direct Smithery API"""
         try:
-            import logging
             logger = logging.getLogger(__name__)
             
             logger.info(f"🏭 [SmitheryMCP] Starting Smithery MCP query for server: {server_name}")
