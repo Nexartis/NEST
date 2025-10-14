@@ -259,8 +259,22 @@ class MCPClient:
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        await self.exit_stack.aclose()
-        self.session = None
+        try:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"🔌 [MCPClient] Cleaning up MCP client...")
+            
+            if self.session:
+                logger.info(f"🔌 [MCPClient] Closing MCP session...")
+                # Don't explicitly close session, let exit_stack handle it
+                self.session = None
+            
+            logger.info(f"🔌 [MCPClient] Closing exit stack...")
+            await self.exit_stack.aclose()
+            logger.info(f"✅ [MCPClient] MCP client cleanup complete")
+            
+        except Exception as e:
+            logger.error(f"❌ [MCPClient] Error during cleanup: {e}")
 
 
 class MCPRegistry:
@@ -370,7 +384,7 @@ class MCPRegistry:
             return None
 
     def execute_mcp_query_sync(self, server_url: str, query: str) -> str:
-        """Execute MCP query synchronously"""
+        """Execute MCP query synchronously with proper async handling"""
         try:
             import logging
             logger = logging.getLogger(__name__)
@@ -379,26 +393,60 @@ class MCPRegistry:
             logger.info(f"🚀 [MCPRegistry] Server URL: {server_url}")
             logger.info(f"🚀 [MCPRegistry] Query: {query}")
             
-            # Run async MCP query in a new event loop
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            
-            try:
-                async def run_query():
+            async def run_query():
+                try:
+                    logger.info(f"🚀 [MCPRegistry] Creating MCPClient...")
                     async with MCPClient() as client:
                         logger.info(f"🚀 [MCPRegistry] MCPClient created, executing query...")
                         result = await client.execute_query(query, server_url)
                         logger.info(f"🚀 [MCPRegistry] MCP query result: {str(result)[:200]}...")
                         return result
+                except Exception as e:
+                    logger.error(f"❌ [MCPRegistry] Error in async query execution: {e}", exc_info=True)
+                    return f"Async execution error: {str(e)}"
+            
+            # Check if we're already in an event loop
+            try:
+                # Try to get current loop
+                current_loop = asyncio.get_running_loop()
+                logger.info(f"🚀 [MCPRegistry] Found existing event loop, using asyncio.create_task")
                 
-                result = loop.run_until_complete(run_query())
-                logger.info(f"✅ [MCPRegistry] MCP query completed successfully")
-                return result
-            finally:
-                loop.close()
+                # We're in an async context, but we need to run sync
+                # This is tricky - we'll need to use a thread pool
+                import concurrent.futures
+                import threading
+                
+                def run_in_thread():
+                    # Create new event loop in thread
+                    new_loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(new_loop)
+                    try:
+                        return new_loop.run_until_complete(run_query())
+                    finally:
+                        new_loop.close()
+                
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(run_in_thread)
+                    result = future.result(timeout=60)  # 60 second timeout
+                    
+            except RuntimeError:
+                # No event loop running, we can create our own
+                logger.info(f"🚀 [MCPRegistry] No existing event loop, creating new one")
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                
+                try:
+                    result = loop.run_until_complete(run_query())
+                finally:
+                    loop.close()
+                    # Clean up the event loop reference
+                    asyncio.set_event_loop(None)
+            
+            logger.info(f"✅ [MCPRegistry] MCP query completed successfully")
+            return result
                 
         except Exception as e:
-            logger.error(f"❌ [MCPRegistry] Error executing MCP query: {e}")
+            logger.error(f"❌ [MCPRegistry] Error executing MCP query: {e}", exc_info=True)
             return f"Error executing MCP query: {str(e)}"
 
     def handle_nanda_mcp_query(self, server_name: str, query: str) -> str:
