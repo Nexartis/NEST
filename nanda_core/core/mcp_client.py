@@ -384,21 +384,36 @@ class MCPRegistry:
             return None
 
     def execute_mcp_query_sync(self, server_url: str, query: str) -> str:
-        """Execute MCP query synchronously using asyncio.run"""
+        """Execute MCP query synchronously using thread pool"""
         try:
             import logging
             import asyncio
+            import concurrent.futures
+            import threading
             logger = logging.getLogger(__name__)
             
             logger.info(f"🚀 [MCPRegistry] Executing MCP query: {query}")
             logger.info(f"🚀 [MCPRegistry] Server URL: {server_url}")
             
-            async def run_query():
-                async with MCPClient() as client:
-                    return await client.execute_query(query, server_url)
+            def run_async_in_thread():
+                """Run async code in a separate thread with its own event loop"""
+                async def run_query():
+                    async with MCPClient() as client:
+                        return await client.execute_query(query, server_url)
+                
+                # Create new event loop for this thread
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    return loop.run_until_complete(run_query())
+                finally:
+                    loop.close()
             
-            # Run the async function in a new event loop
-            result = asyncio.run(run_query())
+            # Run in thread pool to avoid event loop conflicts
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(run_async_in_thread)
+                result = future.result(timeout=30)  # 30 second timeout
+            
             logger.info(f"✅ [MCPRegistry] MCP query completed successfully")
             return result
             
