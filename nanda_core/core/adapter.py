@@ -21,6 +21,7 @@ class NANDA:
                  agent_logic: Callable[[str, str], str],
                  port: int = 6000,
                  registry_url: Optional[str] = None,
+                 mcp_registry_url: Optional[str] = None,
                  public_url: Optional[str] = None,
                  host: str = "0.0.0.0",
                  enable_telemetry: bool = False):
@@ -40,6 +41,7 @@ class NANDA:
         self.agent_logic = agent_logic
         self.port = port
         self.registry_url = registry_url
+        self.mcp_registry_url = mcp_registry_url
         self.public_url = public_url
         self.host = host
         self.enable_telemetry = enable_telemetry
@@ -59,7 +61,8 @@ class NANDA:
             agent_id=agent_id,
             agent_logic=agent_logic,
             registry_url=registry_url,
-            telemetry=self.telemetry
+            telemetry=self.telemetry,
+            mcp_registry_url=mcp_registry_url
         )
         
         print(f"🤖 NANDA Agent '{agent_id}' created")
