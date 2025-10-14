@@ -38,13 +38,16 @@ class SimpleAgentBridge(A2AServer):
         self.agent_logic = agent_logic
         self.registry_url = registry_url
         self.telemetry = telemetry
-        self.mcp_registry_url = mcp_registry_url or registry_url
+        self.mcp_registry_url = mcp_registry_url
         
         # Debug logging
         logger.info(f"🔧 [AgentBridge] Agent ID: {agent_id}")
         logger.info(f"🔧 [AgentBridge] Registry URL: {registry_url}")
         logger.info(f"🔧 [AgentBridge] MCP Registry URL param: {mcp_registry_url}")
+        logger.info(f"🔧 [AgentBridge] MCP Registry URL param type: {type(mcp_registry_url)}")
+        logger.info(f"🔧 [AgentBridge] MCP Registry URL param repr: {repr(mcp_registry_url)}")
         logger.info(f"🔧 [AgentBridge] Final MCP Registry URL: {self.mcp_registry_url}")
+        logger.info(f"🔧 [AgentBridge] Final MCP Registry URL type: {type(self.mcp_registry_url)}")
         
     def handle_message(self, msg: Message) -> Message:
         """Handle incoming messages"""

@@ -52,6 +52,11 @@ def get_agent_config():
     mcp_registry_url = os.getenv("MCP_REGISTRY_URL", None)
     public_url = os.getenv("PUBLIC_URL", None)
     
+    # Debug environment variables
+    print(f"🔍 [ENV DEBUG] REGISTRY_URL: {registry_url}")
+    print(f"🔍 [ENV DEBUG] MCP_REGISTRY_URL: {mcp_registry_url}")
+    print(f"🔍 [ENV DEBUG] All MCP_REGISTRY_URL env vars: {[k for k in os.environ.keys() if 'MCP' in k.upper()]}")
+    
     # Parse capabilities into a list
     expertise_list = [cap.strip() for cap in capabilities.split(",")]
     
