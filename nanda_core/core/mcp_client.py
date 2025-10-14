@@ -416,8 +416,86 @@ class MCPRegistry:
         except Exception as e:
             return f"❌ Error querying NANDA MCP server: {str(e)}"
 
+    def get_smithery_server_info(self, server_id: str) -> Optional[Dict[str, Any]]:
+        """Get server information directly from Smithery registry"""
+        try:
+            import requests
+            import logging
+            logger = logging.getLogger(__name__)
+            
+            if not self.smithery_api_key:
+                logger.error(f"❌ [SmitheryAPI] SMITHERY_API_KEY not found")
+                return None
+            
+            # Use Smithery's direct API
+            smithery_url = f"https://registry.smithery.ai/servers/{server_id}"
+            headers = {
+                "Authorization": f"Bearer {self.smithery_api_key}"
+            }
+            
+            logger.info(f"🏭 [SmitheryAPI] Querying Smithery registry: {smithery_url}")
+            logger.info(f"🏭 [SmitheryAPI] Using API key: {self.smithery_api_key[:10]}...")
+            
+            response = requests.get(smithery_url, headers=headers, timeout=10)
+            logger.info(f"🏭 [SmitheryAPI] Smithery response status: {response.status_code}")
+            
+            if response.status_code == 200:
+                server_info = response.json()
+                logger.info(f"🏭 [SmitheryAPI] Smithery server info: {server_info}")
+                return server_info
+            else:
+                logger.error(f"❌ [SmitheryAPI] Failed to get server info: {response.status_code} - {response.text}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"❌ [SmitheryAPI] Error querying Smithery API: {e}")
+            return None
+
+    def build_smithery_server_url(self, server_info: Dict[str, Any]) -> Optional[str]:
+        """Build Smithery MCP server URL from server info"""
+        try:
+            import logging
+            logger = logging.getLogger(__name__)
+            
+            # Extract deployment URL and config from Smithery response
+            deployment_url = server_info.get("deploymentUrl")
+            connections = server_info.get("connections", [])
+            
+            logger.info(f"🔧 [SmitheryURL] Deployment URL: {deployment_url}")
+            logger.info(f"🔧 [SmitheryURL] Connections: {connections}")
+            
+            if not deployment_url:
+                logger.error(f"❌ [SmitheryURL] No deployment URL found in server info")
+                return None
+            
+            # Find the stdio connection (typical for MCP)
+            stdio_connection = None
+            for conn in connections:
+                if conn.get("type") == "stdio":
+                    stdio_connection = conn
+                    break
+            
+            if not stdio_connection:
+                logger.warning(f"⚠️ [SmitheryURL] No stdio connection found, using deployment URL directly")
+                return deployment_url
+            
+            # Build URL with config if available
+            config_schema = stdio_connection.get("configSchema", {})
+            logger.info(f"🔧 [SmitheryURL] Config schema: {config_schema}")
+            
+            # For now, use the deployment URL directly
+            # In future, we might need to handle config encoding
+            final_url = deployment_url
+            logger.info(f"🔧 [SmitheryURL] Final URL: {final_url}")
+            
+            return final_url
+            
+        except Exception as e:
+            logger.error(f"❌ [SmitheryURL] Error building Smithery URL: {e}")
+            return None
+
     def handle_smithery_mcp_query(self, server_name: str, query: str) -> str:
-        """Handle Smithery MCP registry queries"""
+        """Handle Smithery MCP registry queries using direct Smithery API"""
         try:
             import logging
             logger = logging.getLogger(__name__)
@@ -429,31 +507,23 @@ class MCPRegistry:
                 logger.error(f"❌ [SmitheryMCP] SMITHERY_API_KEY not found in environment variables")
                 return "❌ SMITHERY_API_KEY not found in environment variables"
             
-            logger.info(f"🏭 [SmitheryMCP] Using Smithery API key: {self.smithery_api_key[:10]}...")
+            # Get server info from Smithery registry
+            logger.info(f"🏭 [SmitheryMCP] Getting server info from Smithery registry...")
+            server_info = self.get_smithery_server_info(server_name)
             
-            # Query Smithery registry via NANDA registry service
-            logger.info(f"🏭 [SmitheryMCP] Querying registry for Smithery server config...")
-            server_config = self.get_server_config("smithery", server_name)
+            if not server_info:
+                logger.error(f"❌ [SmitheryMCP] Smithery MCP server '{server_name}' not found")
+                return f"❌ Smithery MCP server '{server_name}' not found in Smithery registry"
             
-            if not server_config:
-                logger.error(f"❌ [SmitheryMCP] Smithery MCP server '{server_name}' not found in registry")
-                return f"❌ Smithery MCP server '{server_name}' not found"
-            
-            logger.info(f"🏭 [SmitheryMCP] Got server config: {server_config}")
-            
-            # Build server URL with authentication
-            logger.info(f"🏭 [SmitheryMCP] Building authenticated server URL...")
-            server_url = self.build_server_url(
-                server_config["endpoint"], 
-                server_config["config"], 
-                "smithery"
-            )
+            # Build server URL
+            logger.info(f"🏭 [SmitheryMCP] Building MCP server URL...")
+            server_url = self.build_smithery_server_url(server_info)
             
             if not server_url:
-                logger.error(f"❌ [SmitheryMCP] Failed to build Smithery MCP server URL for '{server_name}'")
-                return f"❌ Failed to build Smithery MCP server URL for '{server_name}'"
+                logger.error(f"❌ [SmitheryMCP] Failed to build server URL for '{server_name}'")
+                return f"❌ Failed to build MCP server URL for '{server_name}'"
             
-            logger.info(f"🏭 [SmitheryMCP] Built server URL: {server_url[:100]}...")
+            logger.info(f"🏭 [SmitheryMCP] Built server URL: {server_url}")
             
             # Execute MCP query
             logger.info(f"🏭 [SmitheryMCP] Executing MCP query...")
