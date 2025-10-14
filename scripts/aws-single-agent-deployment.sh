@@ -121,6 +121,8 @@ echo "✅ Key pair: $KEY_NAME"
 
 # Create user data script - SIMPLE!
 echo "[4/6] Creating user data script..."
+echo "🔍 DEBUG: MCP_REGISTRY_URL before user data creation: '${MCP_REGISTRY_URL}'"
+echo "🔍 DEBUG: Length of MCP_REGISTRY_URL: ${#MCP_REGISTRY_URL}"
 cat > "user_data_${AGENT_ID}.sh" << EOF
 #!/bin/bash
 exec > /var/log/user-data.log 2>&1
@@ -207,6 +209,8 @@ sudo -u ubuntu bash -c "
     export MCP_REGISTRY_URL="$MCP_REGISTRY_URL"
     export PUBLIC_URL='http://\$PUBLIC_IP:$PORT'
     export PORT='$PORT'
+    echo "🔍 DEBUG IN USER DATA: MCP_REGISTRY_URL='$MCP_REGISTRY_URL'"
+    echo "🔍 DEBUG IN USER DATA: REGISTRY_URL='$REGISTRY_URL'"
     nohup python3 examples/nanda_agent.py > agent.log 2>&1 &
 "
 
