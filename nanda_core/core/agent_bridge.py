@@ -40,6 +40,12 @@ class SimpleAgentBridge(A2AServer):
         self.telemetry = telemetry
         self.mcp_registry_url = mcp_registry_url or registry_url
         
+        # Debug logging
+        logger.info(f"🔧 [AgentBridge] Agent ID: {agent_id}")
+        logger.info(f"🔧 [AgentBridge] Registry URL: {registry_url}")
+        logger.info(f"🔧 [AgentBridge] MCP Registry URL param: {mcp_registry_url}")
+        logger.info(f"🔧 [AgentBridge] Final MCP Registry URL: {self.mcp_registry_url}")
+        
     def handle_message(self, msg: Message) -> Message:
         """Handle incoming messages"""
         conversation_id = msg.conversation_id or str(uuid.uuid4())
@@ -232,8 +238,11 @@ class SimpleAgentBridge(A2AServer):
                     "❌ MCP registry URL not configured"
                 )
             
+            logger.info(f"🔧 [{self.agent_id}] Creating MCPRegistry with MCP URL: {self.mcp_registry_url}")
+            logger.info(f"🔧 [{self.agent_id}] Agent registry URL: {self.registry_url}")
+            
             # Create MCP registry instance and handle query
-            mcp_registry = MCPRegistry(self.mcp_registry_url)
+            mcp_registry = MCPRegistry(self.mcp_registry_url, self.registry_url)
             
             # Handle different registry types using modular functions
             if registry_part.lower() == "nanda":

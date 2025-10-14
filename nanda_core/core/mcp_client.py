@@ -279,22 +279,30 @@ class MCPClient:
 class MCPRegistry:
     """Handles MCP server discovery from the registry"""
 
-    def __init__(self, registry_url: str):
-        self.registry_url = registry_url
+    def __init__(self, mcp_registry_url: str, agent_registry_url: str = None):
+        # Separate URLs for MCP registry and agent registry
+        self.mcp_registry_url = mcp_registry_url  # For NANDA MCP server lookups
+        self.agent_registry_url = agent_registry_url or "http://registry.chat39.com:6900"  # For agent registry queries
         self.smithery_api_key = os.getenv("SMITHERY_API_KEY", "")
+        
+        # Debug logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"🔧 [MCPRegistry] Initialized with mcp_registry_url: {self.mcp_registry_url}")
+        logger.info(f"🔧 [MCPRegistry] Agent registry URL: {self.agent_registry_url}")
+        logger.info(f"🔧 [MCPRegistry] Smithery API key: {self.smithery_api_key[:10]}..." if self.smithery_api_key else "🔧 [MCPRegistry] No Smithery API key")
 
     def get_server_config(self, registry_provider: str, qualified_name: str) -> Optional[Dict[str, Any]]:
-        """Query registry for MCP server configuration"""
+        """Query agent registry for MCP server configuration"""
         try:
             logger = logging.getLogger(__name__)
 
-            query_url = f"{self.registry_url}/get_mcp_registry"
+            query_url = f"{self.agent_registry_url}/get_mcp_registry"
             params = {
                 'registry_provider': registry_provider,
                 'qualified_name': qualified_name
             }
             
-            logger.info(f"🌐 [MCPRegistry] Querying registry: {query_url} with params: {params}")
+            logger.info(f"🌐 [MCPRegistry] Querying agent registry: {query_url} with params: {params}")
             
             response = requests.get(query_url, params=params)
             
@@ -361,8 +369,9 @@ class MCPRegistry:
             logger = logging.getLogger(__name__)
             
             # Query NANDA MCP registry endpoint
-            lookup_url = f"{self.registry_url}/mcp_servers/{server_name}"
+            lookup_url = f"{self.mcp_registry_url}/mcp_servers/{server_name}"
             logger.info(f"🔍 [NANDA-MCP] Looking up server '{server_name}' at: {lookup_url}")
+            logger.info(f"🔍 [NANDA-MCP] Using MCP registry URL: {self.mcp_registry_url}")
             
             response = requests.get(lookup_url, timeout=10)
             
