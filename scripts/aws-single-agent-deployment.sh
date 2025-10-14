@@ -204,7 +204,7 @@ sudo -u ubuntu bash -c "
     export AGENT_DESCRIPTION='$DESCRIPTION'
     export AGENT_CAPABILITIES='$CAPABILITIES'
     export REGISTRY_URL='$REGISTRY_URL'
-    export MCP_REGISTRY_URL='$MCP_REGISTRY_URL'
+    export MCP_REGISTRY_URL="$MCP_REGISTRY_URL"
     export PUBLIC_URL='http://\$PUBLIC_IP:$PORT'
     export PORT='$PORT'
     nohup python3 examples/nanda_agent.py > agent.log 2>&1 &
