@@ -280,7 +280,7 @@ class SimpleAgentBridge(A2AServer):
             )
 
     def _run_mcp_query_sync(self, server_url: str, query: str, registry_type: str = "unknown") -> str:
-        """Simple MCP query execution like your example"""
+        """MCP query execution following the payment middleware pattern"""
         try:
             async def run_mcp():
                 client = MCPClient()
@@ -290,14 +290,17 @@ class SimpleAgentBridge(A2AServer):
                 
                 logger.info(f"🔧 Available tools: {[tool.name for tool in tools]}")
                 
-                # Parse query to extract tool name and parameters
-                # For now, just return available tools
+                # For now, just return available tools - later we'll parse query and call tools directly
                 tool_names = [tool.name for tool in tools]
-                result = f"Connected! Available tools: {', '.join(tool_names)}"
                 
+                # TODO: Parse query and call client.session.call_tool() directly like:
+                # result = await client.session.call_tool("tool_name", {"param": "value"})
+                
+                result = f"✅ Connected to MCP server! Available tools: {', '.join(tool_names)}"
                 await client.exit_stack.aclose()
                 return result
             
+            # Use asyncio.run like in your payment middleware
             return asyncio.run(run_mcp())
             
         except Exception as e:
