@@ -49,7 +49,7 @@ class SimpleAgentBridge(A2AServer):
         logger.info(f"🔧 [AgentBridge] MCP Registry URL: {self.mcp_registry_url}")
         logger.info(f"🔧 [AgentBridge] Smithery API Key: {'Set' if self.smithery_api_key else 'Not set'}")
         
-    async def handle_message(self, msg: Message) -> Message:
+    def handle_message(self, msg: Message) -> Message:
         """Handle incoming messages"""
         conversation_id = msg.conversation_id or str(uuid.uuid4())
         
@@ -80,7 +80,7 @@ class SimpleAgentBridge(A2AServer):
                 logger.info(f"🔧 [{self.agent_id}] Detected MCP message: {user_text}")
                 logger.info(f"🔧 [{self.agent_id}] MCP_AVAILABLE: {MCP_AVAILABLE}")
                 try:
-                    return await self._handle_mcp_message(user_text, msg, conversation_id)
+                    return self._handle_mcp_message(user_text, msg, conversation_id)
                 except Exception as e:
                     logger.error(f"❌ [{self.agent_id}] Error in MCP message handling: {e}")
                     return self._create_response(msg, conversation_id, f"❌ MCP error: {str(e)}")
@@ -199,7 +199,7 @@ class SimpleAgentBridge(A2AServer):
                 f"Unknown command: {command}. Use /help for available commands"
             )
     
-    async def _handle_mcp_message(self, user_text: str, msg: Message, conversation_id: str) -> Message:
+    def _handle_mcp_message(self, user_text: str, msg: Message, conversation_id: str) -> Message:
         """Handle MCP server messages (#registry:server-name query)"""
         logger.info(f"🚀 [{self.agent_id}] _handle_mcp_message called with: {user_text}")
         logger.info(f"🚀 [{self.agent_id}] MCP_AVAILABLE check: {MCP_AVAILABLE}")
@@ -259,9 +259,9 @@ class SimpleAgentBridge(A2AServer):
                 if not server_url:
                     result = f"❌ No server URL found for '{server_name}'"
                 else:
-                    # Execute MCP query with registry type for auth - USE AWAIT DIRECTLY
+                    # Execute MCP query synchronously 
                     try:
-                        mcp_result = await self._run_mcp_query(server_url, query, registry_part)
+                        mcp_result = self._run_mcp_query_sync(server_url, query, registry_part)
                         result = f"🔧 {registry_part.title()} MCP [{server_name}]: {mcp_result}"
                     except Exception as mcp_error:
                         logger.error(f"❌ MCP execution error: {mcp_error}")
@@ -279,21 +279,29 @@ class SimpleAgentBridge(A2AServer):
                 f"❌ Error processing MCP message: {str(e)}"
             )
 
-    async def _run_mcp_query(self, server_url: str, query: str, registry_type: str = "unknown") -> str:
-        """Simple wrapper for MCPClient.execute_query() with auth support"""
-        auth_headers = None
-        
-        # Add Smithery auth headers if needed
-        if registry_type == "smithery" and hasattr(self, 'smithery_api_key') and self.smithery_api_key:
-            auth_headers = {
-                "Authorization": f"Bearer {self.smithery_api_key}"
-            }
-            
+    def _run_mcp_query_sync(self, server_url: str, query: str, registry_type: str = "unknown") -> str:
+        """Simple MCP query execution like your example"""
         try:
-            async with MCPClient() as mcp_client:
-                return await mcp_client.execute_query(query, server_url, auth_headers=auth_headers)
+            async def run_mcp():
+                client = MCPClient()
+                tools = await client.connect_to_server(server_url)
+                if not tools:
+                    return "❌ Failed to connect to MCP server"
+                
+                logger.info(f"🔧 Available tools: {[tool.name for tool in tools]}")
+                
+                # Parse query to extract tool name and parameters
+                # For now, just return available tools
+                tool_names = [tool.name for tool in tools]
+                result = f"Connected! Available tools: {', '.join(tool_names)}"
+                
+                await client.exit_stack.aclose()
+                return result
+            
+            return asyncio.run(run_mcp())
+            
         except Exception as e:
-            logger.error(f"❌ [_run_mcp_query] Error: {e}")
+            logger.error(f"❌ [_run_mcp_query_sync] Error: {e}")
             return f"❌ MCP query failed: {str(e)}"
     
     def _send_to_agent(self, target_agent_id: str, message_text: str, conversation_id: str) -> str:
