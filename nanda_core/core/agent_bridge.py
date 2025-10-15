@@ -38,7 +38,7 @@ class SimpleAgentBridge(A2AServer):
         self.agent_logic = agent_logic
         self.registry_url = registry_url
         self.telemetry = telemetry
-        self.mcp_registry_url = mcp_registry_url
+        self.mcp_registry_url = mcp_registry_url or "https://5db867ae5168.ngrok-free.app"  # Default for testing
         
         # Debug logging
         logger.info(f"🔧 [AgentBridge] Agent ID: {agent_id}")
