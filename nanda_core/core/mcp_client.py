@@ -392,34 +392,80 @@ class MCPRegistry:
             return None
 
     def execute_mcp_query_sync(self, server_url: str, query: str) -> str:
-        """Execute MCP query - simple direct call to Claude API"""
+        """Execute MCP query by actually connecting to the MCP server and using its tools"""
         try:
             logger = logging.getLogger(__name__)
             
-            logger.info(f"🚀 [MCPRegistry] Simple MCP query: {query}")
+            logger.info(f"🚀 [MCPRegistry] Executing MCP query: {query}")
             logger.info(f"🚀 [MCPRegistry] Server URL: {server_url}")
             
-            # Just make a simple call to Claude without MCP complexity for now
-            # This will work until we fix the async issues properly
-            anthropic = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY", ""))
+            # Use asyncio to run the async MCP client
+            async def run_mcp_query():
+                async with MCPClient() as mcp_client:
+                    # Connect to the MCP server and get tools
+                    tools = await mcp_client.connect_to_server(server_url)
+                    
+                    if not tools:
+                        return "❌ Failed to connect to MCP server or no tools available"
+                    
+                    logger.info(f"🔧 [MCPRegistry] Found {len(tools)} tools: {[t.name for t in tools]}")
+                    
+                    # Prepare tools for Claude
+                    available_tools = [{
+                        "name": tool.name,
+                        "description": tool.description,
+                        "input_schema": tool.inputSchema
+                    } for tool in tools]
+                    
+                    # Let Claude decide which tool to use and with what parameters
+                    anthropic = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY", ""))
+                    
+                    messages = [{"role": "user", "content": query}]
+                    
+                    message = anthropic.messages.create(
+                        model="claude-3-5-sonnet-20241022",
+                        max_tokens=1024,
+                        messages=messages,
+                        tools=available_tools
+                    )
+                    
+                    logger.info(f"🤖 [MCPRegistry] Claude response with {len(message.content)} content blocks")
+                    
+                    results = []
+                    
+                    for content in message.content:
+                        if content.type == "text":
+                            results.append(content.text)
+                        elif content.type == "tool_use":
+                            # Execute the tool call on the MCP server
+                            logger.info(f"🔧 [MCPRegistry] Executing tool: {content.name} with args: {content.input}")
+                            
+                            try:
+                                tool_result = await mcp_client.session.call_tool(content.name, content.input)
+                                
+                                if tool_result.isError:
+                                    results.append(f"❌ Tool error: {tool_result.content}")
+                                else:
+                                    # Format the tool result nicely
+                                    formatted_result = mcp_client._format_json_response(tool_result.content)
+                                    results.append(f"✅ {content.name} result:\n{formatted_result}")
+                                    
+                            except Exception as tool_error:
+                                logger.error(f"❌ [MCPRegistry] Tool execution error: {tool_error}")
+                                results.append(f"❌ Error executing {content.name}: {str(tool_error)}")
+                    
+                    return "\n\n".join(results) if results else "No results generated"
             
-            message = anthropic.messages.create(
-                model="claude-3-5-sonnet-20241022",
-                max_tokens=1024,
-                messages=[{"role": "user", "content": f"I need help with: {query}. This is related to MCP server at {server_url}"}]
-            )
+            # Run the async function
+            import asyncio
+            result = asyncio.run(run_mcp_query())
             
-            result = ""
-            for block in message.content:
-                if block.type == "text":
-                    result += block.text + "\n"
-            
-            logger.info(f"✅ [MCPRegistry] Simple query completed")
-            return result.strip() or "No response generated"
+            logger.info(f"✅ [MCPRegistry] MCP query completed")
+            return result
             
         except Exception as e:
-            logger.error(f"❌ [MCPRegistry] Error executing simple query: {e}")
-            return f"Error: {str(e)}"
+            logger.error(f"❌ [MCPRegistry] Error executing MCP query: {e}")
+            return f"❌ MCP execution error: {str(e)}"
 
     def handle_nanda_mcp_query(self, server_name: str, query: str) -> str:
         """Handle NANDA MCP registry queries"""
