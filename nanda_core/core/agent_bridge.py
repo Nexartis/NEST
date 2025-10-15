@@ -15,7 +15,8 @@ from python_a2a import A2AServer, A2AClient, Message, TextContent, MessageRole, 
 
 # MCP imports
 try:
-    from .mcp_client import MCPClient, MCPRegistry
+    from .mcp_client import MCPClient
+    from .mcp_registry import MCPRegistry
     MCP_AVAILABLE = True
 except ImportError:
     MCP_AVAILABLE = False
@@ -240,16 +241,20 @@ class SimpleAgentBridge(A2AServer):
             logger.info(f"🔧 [{self.agent_id}] Creating MCPRegistry with MCP URL: {self.mcp_registry_url}")
             logger.info(f"🔧 [{self.agent_id}] Agent registry URL: {self.registry_url}")
             
-            # Create MCP registry instance and handle query
+            # Get server info from registry
             mcp_registry = MCPRegistry(self.mcp_registry_url, self.registry_url)
+            server_info = mcp_registry.get_mcp_server_info(registry_part, server_name)
             
-            # Handle different registry types using modular functions
-            if registry_part.lower() == "nanda":
-                result = mcp_registry.handle_nanda_mcp_query(server_name, query)
-            elif registry_part.lower() == "smithery":
-                result = mcp_registry.handle_smithery_mcp_query(server_name, query)
+            if not server_info:
+                result = f"❌ MCP server '{server_name}' not found in {registry_part} registry"
             else:
-                result = f"❌ Unknown MCP registry: {registry_part}. Supported: nanda, smithery"
+                server_url = server_info.get("server_url")
+                if not server_url:
+                    result = f"❌ No server URL found for '{server_name}'"
+                else:
+                    # Execute MCP query
+                    result = asyncio.run(self._run_mcp_query(server_url, query))
+                    result = f"🔧 {registry_part.title()} MCP [{server_name}]: {result}"
             
             if self.telemetry:
                 self.telemetry.log_message_received(self.agent_id, conversation_id)
@@ -262,6 +267,11 @@ class SimpleAgentBridge(A2AServer):
                 msg, conversation_id,
                 f"❌ Error processing MCP message: {str(e)}"
             )
+
+    async def _run_mcp_query(self, server_url: str, query: str) -> str:
+        """Simple wrapper for MCPClient.execute_query()"""
+        async with MCPClient() as mcp_client:
+            return await mcp_client.execute_query(query, server_url)
     
     def _send_to_agent(self, target_agent_id: str, message_text: str, conversation_id: str) -> str:
         """Send message to another agent"""
