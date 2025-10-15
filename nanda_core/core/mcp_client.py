@@ -59,7 +59,14 @@ class MCPClient:
                 
             return tools_result.tools
         except Exception as e:
-            logger.error(f"❌ [MCPClient] Error connecting to MCP server: {e}")
+            # Check for specific error types
+            error_msg = str(e).lower()
+            if "401" in error_msg or "unauthorized" in error_msg:
+                logger.error(f"🔐 [MCPClient] Authentication required for MCP server: {server_url}")
+            elif "404" in error_msg or "not found" in error_msg:
+                logger.error(f"🔍 [MCPClient] MCP server not found: {server_url}")
+            else:
+                logger.error(f"❌ [MCPClient] Error connecting to MCP server: {e}")
             return None
 
     async def execute_query(self, query: str, server_url: str, transport_type: str = "http") -> str:
@@ -73,7 +80,7 @@ class MCPClient:
             tools = await self.connect_to_server(server_url, transport_type)
             if not tools:
                 logger.error(f"❌ [MCPClient] Failed to connect to MCP server")
-                return "Failed to connect to MCP server"
+                return "❌ Failed to connect to MCP server. Check server URL and authentication."
 
             available_tools = [{
                 "name": tool.name,
@@ -261,13 +268,24 @@ class MCPClient:
             logger = logging.getLogger(__name__)
             logger.info(f"🔌 [MCPClient] Cleaning up MCP client...")
             
+            # Clean up session first
             if self.session:
-                logger.info(f"🔌 [MCPClient] Closing MCP session...")
-                self.session = None
+                try:
+                    logger.info(f"🔌 [MCPClient] Closing MCP session...")
+                    # Don't just set to None, let exit_stack handle cleanup
+                    self.session = None
+                except Exception as e:
+                    logger.warning(f"⚠️ [MCPClient] Error closing session: {e}")
             
-            logger.info(f"🔌 [MCPClient] Closing exit stack...")
-            await self.exit_stack.aclose()
-            logger.info(f"✅ [MCPClient] MCP client cleanup complete")
-            
+            # Clean up exit stack (this handles all async context managers)
+            try:
+                logger.info(f"🔌 [MCPClient] Closing exit stack...")
+                await self.exit_stack.aclose()
+                logger.info(f"✅ [MCPClient] MCP client cleanup complete")
+            except Exception as e:
+                logger.warning(f"⚠️ [MCPClient] Error closing exit stack: {e}")
+                # Don't re-raise, just log and continue
+                
         except Exception as e:
-            logger.error(f"❌ [MCPClient] Error during cleanup: {e}")
+            logger.error(f"❌ [MCPClient] Unexpected error during cleanup: {e}")
+            # Don't re-raise cleanup errors to avoid masking original exceptions
