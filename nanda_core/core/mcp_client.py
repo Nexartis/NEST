@@ -68,17 +68,7 @@ class MCPClient:
         except Exception as e:
             # Check for specific error types
             error_msg = str(e).lower()
-            if "401" in error_msg or "unauthorized" in error_msg or "http/1.1 401" in error_msg:
-                logger.error(f"🔐 [MCPClient] Authentication required (401) for MCP server: {server_url}")
-            elif "404" in error_msg or "not found" in error_msg or "http/1.1 404" in error_msg:
-                logger.error(f"🔍 [MCPClient] MCP server not found (404): {server_url}")
-            elif "timeout" in error_msg or "timed out" in error_msg:
-                logger.error(f"⏱️ [MCPClient] Connection timeout to MCP server: {server_url}")
-            elif "connection" in error_msg or "connect" in error_msg:
-                logger.error(f"🌐 [MCPClient] Connection error to MCP server: {server_url}")
-            else:
-                logger.error(f"❌ [MCPClient] Error connecting to MCP server: {e}")
-            return None
+            return error_msg
 
     async def execute_query(self, query: str, server_url: str, transport_type: str = "http", auth_headers: Optional[Dict[str, str]] = None) -> str:
         """Execute query on MCP server without message improvement"""
