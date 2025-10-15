@@ -68,10 +68,14 @@ class MCPClient:
         except Exception as e:
             # Check for specific error types
             error_msg = str(e).lower()
-            if "401" in error_msg or "unauthorized" in error_msg:
-                logger.error(f"🔐 [MCPClient] Authentication required for MCP server: {server_url}")
-            elif "404" in error_msg or "not found" in error_msg:
-                logger.error(f"🔍 [MCPClient] MCP server not found: {server_url}")
+            if "401" in error_msg or "unauthorized" in error_msg or "http/1.1 401" in error_msg:
+                logger.error(f"🔐 [MCPClient] Authentication required (401) for MCP server: {server_url}")
+            elif "404" in error_msg or "not found" in error_msg or "http/1.1 404" in error_msg:
+                logger.error(f"🔍 [MCPClient] MCP server not found (404): {server_url}")
+            elif "timeout" in error_msg or "timed out" in error_msg:
+                logger.error(f"⏱️ [MCPClient] Connection timeout to MCP server: {server_url}")
+            elif "connection" in error_msg or "connect" in error_msg:
+                logger.error(f"🌐 [MCPClient] Connection error to MCP server: {server_url}")
             else:
                 logger.error(f"❌ [MCPClient] Error connecting to MCP server: {e}")
             return None
@@ -84,8 +88,8 @@ class MCPClient:
             logger.info(f"🎯 [MCPClient] Executing query: {query}")
             logger.info(f"🎯 [MCPClient] Server URL: {server_url}")
             
-            # Add timeout to prevent hanging
-            tools = await asyncio.wait_for(self.connect_to_server(server_url, transport_type, auth_headers), timeout=30.0)
+            # Connect to server
+            tools = await self.connect_to_server(server_url, transport_type, auth_headers)
             if not tools:
                 logger.error(f"❌ [MCPClient] Failed to connect to MCP server")
                 return "❌ Failed to connect to MCP server. Check server URL and authentication."
@@ -161,23 +165,26 @@ class MCPClient:
 
             return self._parse_result(final_response.strip()) if final_response else "No response generated"
 
-        except asyncio.TimeoutError:
-            logger.error(f"⏱️ [MCPClient] Connection timeout to MCP server: {server_url}")
-            return f"⏱️ Connection timeout to MCP server. Server may be unavailable or overloaded."
         except Exception as e:
-            error_msg = str(e).lower()
-            if "401" in error_msg or "unauthorized" in error_msg:
-                logger.error(f"🔐 [MCPClient] Authentication required for: {server_url}")
-                return f"🔐 Authentication required for MCP server. Check credentials."
-            elif "404" in error_msg or "not found" in error_msg:
-                logger.error(f"🔍 [MCPClient] MCP server not found: {server_url}")
-                return f"🔍 MCP server not found. Check server URL."
-            elif "connection" in error_msg:
-                logger.error(f"🌐 [MCPClient] Connection error to: {server_url}")
-                return f"🌐 Connection error to MCP server. Check network connectivity."
-            else:
-                logger.error(f"❌ [MCPClient] Error executing MCP query: {e}")
-                return f"❌ Error executing MCP query: {str(e)}"
+            return self._handle_execution_error(e, server_url)
+
+    def _handle_execution_error(self, error: Exception, server_url: str) -> str:
+        """Handle and format execution errors with specific error messages"""
+        logger = logging.getLogger(__name__)
+        error_msg = str(error).lower()
+        
+        if "401" in error_msg or "unauthorized" in error_msg:
+            logger.error(f"🔐 [MCPClient] Authentication required for: {server_url}")
+            return "🔐 Authentication required for MCP server. Check credentials."
+        elif "404" in error_msg or "not found" in error_msg:
+            logger.error(f"🔍 [MCPClient] MCP server not found: {server_url}")
+            return "🔍 MCP server not found. Check server URL."
+        elif "connection" in error_msg:
+            logger.error(f"🌐 [MCPClient] Connection error to: {server_url}")
+            return "🌐 Connection error to MCP server. Check network connectivity."
+        else:
+            logger.error(f"❌ [MCPClient] Error executing MCP query: {error}")
+            return f"❌ Error executing MCP query: {str(error)}"
 
     def _parse_result(self, response: Any) -> str:
         """Parse JSON-RPC responses from MCP server and format as readable key-value pairs"""

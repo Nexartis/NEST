@@ -49,7 +49,7 @@ class SimpleAgentBridge(A2AServer):
         logger.info(f"🔧 [AgentBridge] MCP Registry URL: {self.mcp_registry_url}")
         logger.info(f"🔧 [AgentBridge] Smithery API Key: {'Set' if self.smithery_api_key else 'Not set'}")
         
-    def handle_message(self, msg: Message) -> Message:
+    async def handle_message(self, msg: Message) -> Message:
         """Handle incoming messages"""
         conversation_id = msg.conversation_id or str(uuid.uuid4())
         
@@ -79,7 +79,11 @@ class SimpleAgentBridge(A2AServer):
                 # MCP server message
                 logger.info(f"🔧 [{self.agent_id}] Detected MCP message: {user_text}")
                 logger.info(f"🔧 [{self.agent_id}] MCP_AVAILABLE: {MCP_AVAILABLE}")
-                return self._handle_mcp_message(user_text, msg, conversation_id)
+                try:
+                    return await self._handle_mcp_message(user_text, msg, conversation_id)
+                except Exception as e:
+                    logger.error(f"❌ [{self.agent_id}] Error in MCP message handling: {e}")
+                    return self._create_response(msg, conversation_id, f"❌ MCP error: {str(e)}")
             elif user_text.startswith("/"):
                 # System command
                 logger.info(f"⚙️ [{self.agent_id}] Processing / command")
@@ -195,7 +199,7 @@ class SimpleAgentBridge(A2AServer):
                 f"Unknown command: {command}. Use /help for available commands"
             )
     
-    def _handle_mcp_message(self, user_text: str, msg: Message, conversation_id: str) -> Message:
+    async def _handle_mcp_message(self, user_text: str, msg: Message, conversation_id: str) -> Message:
         """Handle MCP server messages (#registry:server-name query)"""
         logger.info(f"🚀 [{self.agent_id}] _handle_mcp_message called with: {user_text}")
         logger.info(f"🚀 [{self.agent_id}] MCP_AVAILABLE check: {MCP_AVAILABLE}")
@@ -255,9 +259,13 @@ class SimpleAgentBridge(A2AServer):
                 if not server_url:
                     result = f"❌ No server URL found for '{server_name}'"
                 else:
-                    # Execute MCP query with registry type for auth
-                    result = asyncio.run(self._run_mcp_query(server_url, query, registry_part))
-                    result = f"🔧 {registry_part.title()} MCP [{server_name}]: {result}"
+                    # Execute MCP query with registry type for auth - USE AWAIT DIRECTLY
+                    try:
+                        mcp_result = await self._run_mcp_query(server_url, query, registry_part)
+                        result = f"🔧 {registry_part.title()} MCP [{server_name}]: {mcp_result}"
+                    except Exception as mcp_error:
+                        logger.error(f"❌ MCP execution error: {mcp_error}")
+                        result = f"❌ MCP server '{server_name}' error: {str(mcp_error)}"
             
             if self.telemetry:
                 self.telemetry.log_message_received(self.agent_id, conversation_id)
@@ -281,8 +289,12 @@ class SimpleAgentBridge(A2AServer):
                 "Authorization": f"Bearer {self.smithery_api_key}"
             }
             
-        async with MCPClient() as mcp_client:
-            return await mcp_client.execute_query(query, server_url, auth_headers=auth_headers)
+        try:
+            async with MCPClient() as mcp_client:
+                return await mcp_client.execute_query(query, server_url, auth_headers=auth_headers)
+        except Exception as e:
+            logger.error(f"❌ [_run_mcp_query] Error: {e}")
+            return f"❌ MCP query failed: {str(e)}"
     
     def _send_to_agent(self, target_agent_id: str, message_text: str, conversation_id: str) -> str:
         """Send message to another agent"""
