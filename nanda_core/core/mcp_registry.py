@@ -203,27 +203,26 @@ class MCPRegistry:
                 logger.error(f"❌ [SmitheryURL] No deployment URL found in server info")
                 return None
             
-            # Find the stdio connection (typical for MCP)
-            stdio_connection = None
+            # Find the MCP connection (look for http type first, then stdio)
+            mcp_connection = None
             for conn in connections:
-                if conn.get("type") == "stdio":
-                    stdio_connection = conn
+                if conn.get("type") == "http" and conn.get("deploymentUrl"):
+                    mcp_connection = conn
+                    break
+                elif conn.get("type") == "stdio":
+                    mcp_connection = conn
                     break
             
-            if not stdio_connection:
-                logger.warning(f"⚠️ [SmitheryURL] No stdio connection found, using deployment URL directly")
+            if mcp_connection and mcp_connection.get("deploymentUrl"):
+                mcp_url = mcp_connection.get("deploymentUrl")
+                logger.info(f"✅ [SmitheryURL] Using MCP connection URL: {mcp_url}")
+                return mcp_url
+            elif mcp_connection:
+                logger.info(f"✅ [SmitheryURL] Using stdio connection with deployment URL: {deployment_url}")
                 return deployment_url
-            
-            # Build URL with config if available
-            config_schema = stdio_connection.get("configSchema", {})
-            logger.info(f"🔧 [SmitheryURL] Config schema: {config_schema}")
-            
-            # For now, use the deployment URL directly
-            # In future, we might need to handle config encoding
-            final_url = deployment_url
-            logger.info(f"🔧 [SmitheryURL] Final URL: {final_url}")
-            
-            return final_url
+            else:
+                logger.warning(f"⚠️ [SmitheryURL] No MCP connection found, using deployment URL directly")
+                return deployment_url
             
         except Exception as e:
             logger.error(f"❌ [SmitheryURL] Error building Smithery URL: {e}")
