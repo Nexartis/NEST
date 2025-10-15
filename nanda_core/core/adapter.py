@@ -24,7 +24,8 @@ class NANDA:
                  mcp_registry_url: Optional[str] = None,
                  public_url: Optional[str] = None,
                  host: str = "0.0.0.0",
-                 enable_telemetry: bool = False):
+                 enable_telemetry: bool = False,
+                 smithery_api_key: Optional[str] = None):
         """
         Create a simple NANDA agent
         
@@ -33,9 +34,11 @@ class NANDA:
             agent_logic: Function that takes (message: str, conversation_id: str) -> response: str
             port: Port to run on
             registry_url: Optional registry URL for agent discovery
+            mcp_registry_url: Optional MCP registry URL for MCP server discovery
             public_url: Public URL for agent registration (e.g., https://yourdomain.com:6000)
             host: Host to bind to
             enable_telemetry: Enable telemetry logging (optional)
+            smithery_api_key: Optional Smithery API key for MCP server authentication
         """
         self.agent_id = agent_id
         self.agent_logic = agent_logic
@@ -45,6 +48,7 @@ class NANDA:
         self.public_url = public_url
         self.host = host
         self.enable_telemetry = enable_telemetry
+        self.smithery_api_key = smithery_api_key
         
         # Initialize telemetry if enabled
         self.telemetry = None
@@ -62,7 +66,8 @@ class NANDA:
             agent_logic=agent_logic,
             registry_url=registry_url,
             telemetry=self.telemetry,
-            mcp_registry_url=mcp_registry_url
+            mcp_registry_url=mcp_registry_url,
+            smithery_api_key=smithery_api_key
         )
         
         print(f"🤖 NANDA Agent '{agent_id}' created")

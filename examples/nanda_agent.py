@@ -205,8 +205,10 @@ def main():
         agent_logic=agent_logic,
         port=PORT,
         registry_url=AGENT_CONFIG["registry_url"],
+        mcp_registry_url=AGENT_CONFIG["mcp_registry_url"],
         public_url=AGENT_CONFIG["public_url"],
-        enable_telemetry=False
+        enable_telemetry=False,
+        smithery_api_key=os.getenv("SMITHERY_API_KEY")
     )
     
     print(f"🚀 Agent URL: http://localhost:{PORT}/a2a")
@@ -265,7 +267,8 @@ When someone asks about yourself, mention that you're part of the NANDA agent ne
         port=port,
         registry_url=custom_config["registry_url"],
         mcp_registry_url=custom_config["mcp_registry_url"],
-        enable_telemetry=False
+        enable_telemetry=False,
+        smithery_api_key=os.getenv("SMITHERY_API_KEY")
     )
     
     print(f"🤖 Starting custom LLM agent: {agent_name}")

@@ -25,21 +25,28 @@ class MCPClient:
         self.exit_stack = AsyncExitStack()
         self.anthropic = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY", ""))
 
-    async def connect_to_server(self, server_url: str, transport_type: str = "http") -> Optional[List[Any]]:
+    async def connect_to_server(self, server_url: str, transport_type: str = "http", auth_headers: Optional[Dict[str, str]] = None) -> Optional[List[Any]]:
         """Connect to MCP server and return available tools"""
         try:
             logger = logging.getLogger(__name__)
             
             logger.info(f"🔌 [MCPClient] Connecting to MCP server: {server_url}")
             logger.info(f"🔌 [MCPClient] Transport type: {transport_type}")
+            logger.info(f"🔌 [MCPClient] Auth headers: {'Yes' if auth_headers else 'No'}")
             
             if transport_type.lower() == "sse":
                 logger.info(f"🔌 [MCPClient] Using SSE transport")
-                transport = await self.exit_stack.enter_async_context(sse_client(server_url))
+                if auth_headers:
+                    transport = await self.exit_stack.enter_async_context(sse_client(server_url, headers=auth_headers))
+                else:
+                    transport = await self.exit_stack.enter_async_context(sse_client(server_url))
                 read_stream, write_stream = transport
             else:
                 logger.info(f"🔌 [MCPClient] Using HTTP transport")
-                transport = await self.exit_stack.enter_async_context(streamablehttp_client(server_url))
+                if auth_headers:
+                    transport = await self.exit_stack.enter_async_context(streamablehttp_client(server_url, headers=auth_headers))
+                else:
+                    transport = await self.exit_stack.enter_async_context(streamablehttp_client(server_url))
                 read_stream, write_stream, _ = transport
 
             logger.info(f"🔌 [MCPClient] Creating MCP session...")
@@ -69,7 +76,7 @@ class MCPClient:
                 logger.error(f"❌ [MCPClient] Error connecting to MCP server: {e}")
             return None
 
-    async def execute_query(self, query: str, server_url: str, transport_type: str = "http") -> str:
+    async def execute_query(self, query: str, server_url: str, transport_type: str = "http", auth_headers: Optional[Dict[str, str]] = None) -> str:
         """Execute query on MCP server without message improvement"""
         try:
             logger = logging.getLogger(__name__)
@@ -78,7 +85,7 @@ class MCPClient:
             logger.info(f"🎯 [MCPClient] Server URL: {server_url}")
             
             # Add timeout to prevent hanging
-            tools = await asyncio.wait_for(self.connect_to_server(server_url, transport_type), timeout=30.0)
+            tools = await asyncio.wait_for(self.connect_to_server(server_url, transport_type, auth_headers), timeout=30.0)
             if not tools:
                 logger.error(f"❌ [MCPClient] Failed to connect to MCP server")
                 return "❌ Failed to connect to MCP server. Check server URL and authentication."

@@ -33,18 +33,21 @@ class SimpleAgentBridge(A2AServer):
                  agent_logic: Callable[[str, str], str],
                  registry_url: Optional[str] = None,
                  telemetry = None,
-                 mcp_registry_url: Optional[str] = None):
+                 mcp_registry_url: Optional[str] = None,
+                 smithery_api_key: Optional[str] = None):
         super().__init__()
         self.agent_id = agent_id
         self.agent_logic = agent_logic
         self.registry_url = registry_url
         self.telemetry = telemetry
         self.mcp_registry_url = mcp_registry_url or "https://5db867ae5168.ngrok-free.app"  # Default for testing
+        self.smithery_api_key = smithery_api_key or os.getenv("SMITHERY_API_KEY")
         
         # Debug logging
         logger.info(f"🔧 [AgentBridge] Agent ID: {agent_id}")
         logger.info(f"🔧 [AgentBridge] Registry URL: {registry_url}")
         logger.info(f"🔧 [AgentBridge] MCP Registry URL: {self.mcp_registry_url}")
+        logger.info(f"🔧 [AgentBridge] Smithery API Key: {'Set' if self.smithery_api_key else 'Not set'}")
         
     def handle_message(self, msg: Message) -> Message:
         """Handle incoming messages"""
@@ -252,8 +255,8 @@ class SimpleAgentBridge(A2AServer):
                 if not server_url:
                     result = f"❌ No server URL found for '{server_name}'"
                 else:
-                    # Execute MCP query
-                    result = asyncio.run(self._run_mcp_query(server_url, query))
+                    # Execute MCP query with registry type for auth
+                    result = asyncio.run(self._run_mcp_query(server_url, query, registry_part))
                     result = f"🔧 {registry_part.title()} MCP [{server_name}]: {result}"
             
             if self.telemetry:
@@ -268,10 +271,18 @@ class SimpleAgentBridge(A2AServer):
                 f"❌ Error processing MCP message: {str(e)}"
             )
 
-    async def _run_mcp_query(self, server_url: str, query: str) -> str:
-        """Simple wrapper for MCPClient.execute_query()"""
+    async def _run_mcp_query(self, server_url: str, query: str, registry_type: str = "unknown") -> str:
+        """Simple wrapper for MCPClient.execute_query() with auth support"""
+        auth_headers = None
+        
+        # Add Smithery auth headers if needed
+        if registry_type == "smithery" and hasattr(self, 'smithery_api_key') and self.smithery_api_key:
+            auth_headers = {
+                "Authorization": f"Bearer {self.smithery_api_key}"
+            }
+            
         async with MCPClient() as mcp_client:
-            return await mcp_client.execute_query(query, server_url)
+            return await mcp_client.execute_query(query, server_url, auth_headers=auth_headers)
     
     def _send_to_agent(self, target_agent_id: str, message_text: str, conversation_id: str) -> str:
         """Send message to another agent"""
