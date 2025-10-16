@@ -134,32 +134,8 @@ apt-get install -y python3 python3-venv python3-pip git curl
 
 # Setup project as ubuntu user
 cd /home/ubuntu
-sudo -u ubuntu git clone https://github.com/rahul240699/NEST.git nanda-agent-$AGENT_ID
+sudo -u ubuntu git clone https://github.com/projnanda/NEST.git nanda-agent-$AGENT_ID
 cd nanda-agent-$AGENT_ID
-
-# Fetch all remote branches
-echo "Fetching all remote branches..."
-sudo -u ubuntu git fetch --all
-
-# List available branches and switch to MCP tooling branch
-echo "Available branches:"
-sudo -u ubuntu git branch -a
-echo "Current branch before checkout:"
-sudo -u ubuntu git branch
-echo "Attempting to checkout feature/mcp-tooling..."
-if sudo -u ubuntu git checkout -b feature/mcp-tooling origin/feature/mcp-tooling; then
-    echo "Successfully checked out feature/mcp-tooling"
-    sudo -u ubuntu git branch
-else
-    echo "Failed to checkout feature/mcp-tooling, trying alternative method..."
-    if sudo -u ubuntu git checkout feature/mcp-tooling; then
-        echo "Successfully checked out existing feature/mcp-tooling"
-        sudo -u ubuntu git branch
-    else
-        echo "Branch feature/mcp-tooling does not exist, staying on main"
-        sudo -u ubuntu git branch
-    fi
-fi
 
 # Create virtual environment and install
 sudo -u ubuntu python3 -m venv env
