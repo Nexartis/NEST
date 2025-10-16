@@ -40,7 +40,7 @@ class SimpleAgentBridge(A2AServer):
         self.agent_logic = agent_logic
         self.registry_url = registry_url
         self.telemetry = telemetry
-        self.mcp_registry_url = mcp_registry_url or "https://5db867ae5168.ngrok-free.app"  # Default for testing
+        self.mcp_registry_url = mcp_registry_url or "https://51ec70b1aaec.ngrok-free.app"  # Default for testing
         self.smithery_api_key = smithery_api_key or os.getenv("SMITHERY_API_KEY")
         
         # Debug logging
@@ -306,16 +306,19 @@ class SimpleAgentBridge(A2AServer):
     async def _run_mcp_async(self, server_url: str, query: str, registry_type: str = "unknown") -> str:
         """Async MCP operations - just use execute_query directly"""
         try:
-            # Set up auth headers if needed
+            # For Smithery servers, append API key as query parameter
+            final_server_url = server_url
             auth_headers = None
+            
             if registry_type == "smithery" and hasattr(self, 'smithery_api_key') and self.smithery_api_key:
-                auth_headers = {
-                    "Authorization": f"Bearer {self.smithery_api_key}"
-                }
+                # Append API key as query parameter for Smithery
+                separator = "&" if "?" in server_url else "?"
+                final_server_url = f"{server_url}{separator}api_key={self.smithery_api_key}"
+                logger.info(f"🔧 [{self.agent_id}] Added Smithery API key to URL")
             
             # Use execute_query - it handles everything: connection, tool selection, execution
             client = MCPClient()
-            result = await client.execute_query(query, server_url, auth_headers=auth_headers)
+            result = await client.execute_query(query, final_server_url, auth_headers=auth_headers)
             return result
             
         except Exception as e:
