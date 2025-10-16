@@ -304,27 +304,21 @@ class SimpleAgentBridge(A2AServer):
         return result_container.get('result', "❌ MCP query failed")
     
     async def _run_mcp_async(self, server_url: str, query: str, registry_type: str = "unknown") -> str:
-        """Async MCP operations - separated for clean thread handling"""
+        """Async MCP operations - just use execute_query directly"""
         try:
+            # Set up auth headers if needed
+            auth_headers = None
+            if registry_type == "smithery" and hasattr(self, 'smithery_api_key') and self.smithery_api_key:
+                auth_headers = {
+                    "Authorization": f"Bearer {self.smithery_api_key}"
+                }
+            
+            # Use execute_query - it handles everything: connection, tool selection, execution
             client = MCPClient()
-            tools = await client.connect_to_server(server_url)
-            if not tools:
-                return "❌ Failed to connect to MCP server"
-            
-            logger.info(f"🔧 Available tools: {[tool.name for tool in tools]}")
-            
-            # For now, just return available tools - later we'll parse query and call tools directly  
-            tool_names = [tool.name for tool in tools]
-            
-            # TODO: Parse query and call client.session.call_tool() directly like:
-            # result = await client.session.call_tool("tool_name", {"param": "value"})
-            
-            result = f"✅ Connected to MCP server! Available tools: {', '.join(tool_names)}"
-            await client.exit_stack.aclose()
+            result = await client.execute_query(query, server_url, auth_headers=auth_headers)
             return result
             
         except Exception as e:
-            logger.error(f"❌ [_run_mcp_async] Error: {e}")
             return f"❌ MCP query failed: {str(e)}"
     
     def _send_to_agent(self, target_agent_id: str, message_text: str, conversation_id: str) -> str:
