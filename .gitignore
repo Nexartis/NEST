@@ -44,7 +44,7 @@ test_logs/
 *.jsonl
 
 # Local development
-nanda_mcp_registry/
+# nanda_mcp_registry/
 
 # IDE
 .vscode/

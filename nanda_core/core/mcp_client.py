@@ -156,25 +156,9 @@ class MCPClient:
             return self._parse_result(final_response.strip()) if final_response else "No response generated"
 
         except Exception as e:
-            return self._handle_execution_error(e, server_url)
-
-    def _handle_execution_error(self, error: Exception, server_url: str) -> str:
-        """Handle and format execution errors with specific error messages"""
-        logger = logging.getLogger(__name__)
-        error_msg = str(error).lower()
-        
-        if "401" in error_msg or "unauthorized" in error_msg:
-            logger.error(f"🔐 [MCPClient] Authentication required for: {server_url}")
-            return "🔐 Authentication required for MCP server. Check credentials."
-        elif "404" in error_msg or "not found" in error_msg:
-            logger.error(f"🔍 [MCPClient] MCP server not found: {server_url}")
-            return "🔍 MCP server not found. Check server URL."
-        elif "connection" in error_msg:
-            logger.error(f"🌐 [MCPClient] Connection error to: {server_url}")
-            return "🌐 Connection error to MCP server. Check network connectivity."
-        else:
-            logger.error(f"❌ [MCPClient] Error executing MCP query: {error}")
-            return f"❌ Error executing MCP query: {str(error)}"
+            logger = logging.getLogger(__name__)
+            logger.error(f"❌ [MCPClient] Error executing MCP query: {e}")
+            return f"❌ MCP error: {str(e)}"
 
     def _parse_result(self, response: Any) -> str:
         """Parse JSON-RPC responses from MCP server and format as readable key-value pairs"""

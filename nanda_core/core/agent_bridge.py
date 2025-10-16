@@ -40,7 +40,7 @@ class SimpleAgentBridge(A2AServer):
         self.agent_logic = agent_logic
         self.registry_url = registry_url
         self.telemetry = telemetry
-        self.mcp_registry_url = mcp_registry_url or "https://51ec70b1aaec.ngrok-free.app"  # Default for testing
+        self.mcp_registry_url = mcp_registry_url
         self.smithery_api_key = smithery_api_key or os.getenv("SMITHERY_API_KEY")
         
         # Debug logging
