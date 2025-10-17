@@ -85,6 +85,8 @@ NEST/
 
 ## Agent Communication
 
+### A2A Communication
+
 Agents can communicate with each other using the `@agent-id` syntax:
 
 ```bash
@@ -98,6 +100,83 @@ curl -X POST http://agent-ip:{PORT}/a2a \
     },
     "role": "user",
     "conversation_id": "test123"
+  }'
+```
+
+### MCP (Model Context Protocol) Integration
+
+Agents can discover and execute tools from MCP servers using the `#registry:server-name` syntax:
+
+**Smithery MCP Servers:**
+
+```bash
+# Query Smithery registry servers
+curl -X POST http://agent-ip:{PORT}/a2a \
+  -H "Content-Type: application/json" \
+  -d '{
+    "content": {
+      "text": "#smithery:fetch get current weather in NYC",
+      "type": "text"
+    },
+    "role": "user",
+    "conversation_id": "mcp-test"
+  }'
+```
+
+**NANDA MCP Servers:**
+
+```bash
+# Query NANDA registry servers
+curl -X POST http://agent-ip:{PORT}/a2a \
+  -H "Content-Type: application/json" \
+  -d '{
+    "content": {
+      "text": "#nanda:nanda-points get my current points balance",
+      "type": "text"
+    },
+    "role": "user",
+    "conversation_id": "nanda-test"
+  }'
+```
+
+The agent will automatically:
+
+1. Discover the MCP server from the appropriate registry
+2. Connect to the server and get available tools
+3. Use Claude to intelligently select and execute the right tools
+4. Return formatted results
+
+## NANDA MCP Registry Setup
+
+To run your own NANDA MCP registry for internal MCP servers:
+
+```bash
+# Navigate to registry directory
+cd nanda_mcp_registry
+
+# Install dependencies
+pip install flask pymongo
+
+# Set environment variables
+export MONGO_URI="mongodb://localhost:27017/"
+export DB_NAME="nanda"
+export COLLECTION_NAME="mcp_servers"
+
+# Run the registry
+python app.py
+```
+
+The registry will start on `localhost:5001` and automatically includes a sample `nanda-points` server. You can register additional MCP servers via REST API:
+
+```bash
+# Register a new MCP server
+curl -X POST http://localhost:5001/mcp_servers \
+  -H "Content-Type: application/json" \
+  -d '{
+    "qualified_name": "my-server",
+    "server_url": "https://my-server.com/mcp",
+    "description": "My custom MCP server",
+    "tags": ["custom", "internal"]
   }'
 ```
 
