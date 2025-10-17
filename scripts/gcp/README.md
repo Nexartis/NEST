@@ -32,6 +32,7 @@ gcloud services enable compute.googleapis.com
 Deploy a single NANDA agent on GCP Compute Engine with full MCP support.
 
 **Usage:**
+
 ```bash
 bash scripts/gcp/single-agent-deployment.sh \
   "agent-id" \
@@ -50,6 +51,7 @@ bash scripts/gcp/single-agent-deployment.sh \
 ```
 
 **Example:**
+
 ```bash
 bash scripts/gcp/single-agent-deployment.sh \
   "gcp-data-scientist" \
@@ -72,6 +74,7 @@ bash scripts/gcp/single-agent-deployment.sh \
 Deploy multiple NANDA agents on a single GCP Compute Engine instance with supervisor process management.
 
 **Usage:**
+
 ```bash
 bash scripts/gcp/multi-agent-deployment.sh \
   "anthropic-api-key" \
@@ -84,6 +87,7 @@ bash scripts/gcp/multi-agent-deployment.sh \
 ```
 
 **Example:**
+
 ```bash
 bash scripts/gcp/multi-agent-deployment.sh \
   "sk-ant-api03-..." \
@@ -139,6 +143,7 @@ All scripts support these environment variables:
 Both scripts include full MCP (Model Context Protocol) support:
 
 ### Smithery MCP Servers
+
 ```bash
 # Test Smithery MCP integration
 curl -X POST http://EXTERNAL_IP:PORT/a2a \
@@ -147,6 +152,7 @@ curl -X POST http://EXTERNAL_IP:PORT/a2a \
 ```
 
 ### NANDA MCP Servers
+
 ```bash
 # Test NANDA MCP integration
 curl -X POST http://EXTERNAL_IP:PORT/a2a \
@@ -157,6 +163,7 @@ curl -X POST http://EXTERNAL_IP:PORT/a2a \
 ## Management Commands
 
 ### Instance Management
+
 ```bash
 # SSH into instance
 gcloud compute ssh ubuntu@INSTANCE_NAME --zone=ZONE
@@ -175,6 +182,7 @@ gcloud compute instances delete INSTANCE_NAME --zone=ZONE
 ```
 
 ### Multi-Agent Management (via SSH)
+
 ```bash
 # Check agent status
 sudo supervisorctl status
@@ -192,11 +200,13 @@ sudo tail -f /var/log/agent_AGENT_ID.out.log
 ## Cost Optimization
 
 ### Free Tier Usage
+
 - Use `e2-micro` instances in eligible regions
 - Deploy in `us-central1-a`, `us-east1-b`, or `us-west1-b`
 - Monitor usage to stay within free tier limits
 
 ### Cost Management
+
 ```bash
 # Set up budget alerts
 gcloud billing budgets create --billing-account=BILLING_ACCOUNT_ID \
@@ -215,27 +225,32 @@ gcloud compute instances create INSTANCE_NAME \
 ### Common Issues
 
 1. **Authentication Errors**
+
    ```bash
    gcloud auth login
    gcloud auth list
    ```
 
 2. **API Not Enabled**
+
    ```bash
    gcloud services enable compute.googleapis.com
    ```
 
 3. **Quota Exceeded**
+
    ```bash
    gcloud compute project-info describe --format="table(quotas.metric,quotas.limit,quotas.usage)"
    ```
 
 4. **Instance Not Starting**
+
    ```bash
    gcloud compute instances get-serial-port-output INSTANCE_NAME --zone=ZONE
    ```
 
 5. **Agent Not Responding**
+
    ```bash
    gcloud compute ssh ubuntu@INSTANCE_NAME --zone=ZONE
    sudo tail -f /var/log/startup-script.log
@@ -252,12 +267,14 @@ gcloud compute instances create INSTANCE_NAME \
 ## Monitoring and Logging
 
 ### GCP Logging
+
 ```bash
 # View logs in Cloud Logging
 gcloud logging read "resource.type=gce_instance AND resource.labels.instance_id=INSTANCE_ID"
 ```
 
 ### Custom Metrics
+
 - Agent response times
 - MCP server connection health
 - A2A communication success rates
@@ -265,11 +282,13 @@ gcloud logging read "resource.type=gce_instance AND resource.labels.instance_id=
 ## Support
 
 For GCP-specific issues:
+
 - Check [GCP Compute Engine documentation](https://cloud.google.com/compute/docs)
 - Review [GCP troubleshooting guides](https://cloud.google.com/compute/docs/troubleshooting)
 - Monitor [GCP status page](https://status.cloud.google.com/)
 
 For NANDA-specific issues:
+
 - Check agent logs: `/var/log/agent_*.out.log`
 - Review startup script logs: `/var/log/startup-script.log`
 - Test MCP functionality with provided curl commands

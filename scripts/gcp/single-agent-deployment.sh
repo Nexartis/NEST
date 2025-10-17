@@ -45,6 +45,32 @@ if [ -z "$AGENT_ID" ] || [ -z "$ANTHROPIC_API_KEY" ] || [ -z "$AGENT_NAME" ] || 
     exit 1
 fi
 
+# Validate port is in allowed ranges
+validate_port() {
+    local port=$1
+    # Allowed port ranges: 6000-6100, 7000-7100, 8000-8100, 9000-9100, 10000-10100, 11000-11100, 12000-12100, 13000-13100, 14000-14100, 15000-15100
+    if { [ "$port" -ge 6000 ] && [ "$port" -le 6100 ]; } || \
+       { [ "$port" -ge 7000 ] && [ "$port" -le 7100 ]; } || \
+       { [ "$port" -ge 8000 ] && [ "$port" -le 8100 ]; } || \
+       { [ "$port" -ge 9000 ] && [ "$port" -le 9100 ]; } || \
+       { [ "$port" -ge 10000 ] && [ "$port" -le 10100 ]; } || \
+       { [ "$port" -ge 11000 ] && [ "$port" -le 11100 ]; } || \
+       { [ "$port" -ge 12000 ] && [ "$port" -le 12100 ]; } || \
+       { [ "$port" -ge 13000 ] && [ "$port" -le 13100 ]; } || \
+       { [ "$port" -ge 14000 ] && [ "$port" -le 14100 ]; } || \
+       { [ "$port" -ge 15000 ] && [ "$port" -le 15100 ]; }; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+if ! validate_port "$PORT"; then
+    echo "❌ Error: Port $PORT is not in allowed ranges!"
+    echo "Allowed port ranges: 6000-6100, 7000-7100, 8000-8100, 9000-9100, 10000-10100, 11000-11100, 12000-12100, 13000-13100, 14000-14100, 15000-15100"
+    exit 1
+fi
+
 echo "🚀 GCP Compute Engine + NANDA Agent Deployment"
 echo "=============================================="
 echo "Agent ID: $AGENT_ID"
@@ -187,8 +213,8 @@ sudo -u ubuntu bash -c "
     export REGISTRY_URL='REGISTRY_URL_PLACEHOLDER'
     export MCP_REGISTRY_URL='MCP_REGISTRY_URL_PLACEHOLDER'
     # Get the external IP dynamically at runtime
-    EXTERNAL_IP=\$(curl -s -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/access-configs/0/external-ip)
-    export PUBLIC_URL="http://\$EXTERNAL_IP:PORT_PLACEHOLDER"
+    EXTERNAL_IP=$(curl -s -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/access-configs/0/external-ip)
+    export PUBLIC_URL="http://$EXTERNAL_IP:PORT_PLACEHOLDER"
     export PORT='PORT_PLACEHOLDER'
     nohup python3 examples/nanda_agent.py > agent.log 2>&1 &
 "

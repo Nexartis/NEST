@@ -46,6 +46,7 @@ bash scripts/gcp/multi-agent-deployment.sh \
 ```
 
 **Example (AWS):**
+
 ```bash
 bash scripts/aws/single-agent-deployment.sh \
   "furniture-expert" "sk-ant-api03-..." "Furniture Expert" \
@@ -57,6 +58,7 @@ bash scripts/aws/single-agent-deployment.sh \
 ```
 
 **Example (GCP):**
+
 ```bash
 bash scripts/gcp/single-agent-deployment.sh \
   "gcp-data-scientist" "sk-ant-api03-..." "GCP Data Scientist" \
@@ -133,6 +135,7 @@ Pre-configured agent groups for quick deployment:
 ## Monitoring
 
 Each deployed agent includes:
+
 - **Health checks** on startup
 - **Automatic registry registration**
 - **Process management** with supervisor
@@ -153,6 +156,7 @@ Each deployed agent includes:
 ### Agent Personality Configuration
 
 Agents are configured with:
+
 - **Domain**: Primary area of expertise
 - **Specialization**: Specific role and personality
 - **Description**: Detailed background for system prompt

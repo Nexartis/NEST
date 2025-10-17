@@ -6,6 +6,40 @@
 
 set -e
 
+# Function to validate port is in allowed ranges
+validate_port() {
+    local port=$1
+    
+    # Define allowed port ranges (must match firewall rules)
+    local allowed_ranges=(
+        "6000:6100"
+        "7000:7100" 
+        "8000:8100"
+        "9000:9100"
+        "10000:10100"
+        "11000:11100"
+        "12000:12100"
+        "13000:13100"
+        "14000:14100"
+        "15000:15100"
+    )
+    
+    for range in "${allowed_ranges[@]}"; do
+        local start=${range%:*}
+        local end=${range#*:}
+        
+        if [ "$port" -ge "$start" ] && [ "$port" -le "$end" ]; then
+            return 0  # Port is valid
+        fi
+    done
+    
+    echo "❌ Port $port is not in allowed ranges. Allowed ranges:"
+    for range in "${allowed_ranges[@]}"; do
+        echo "   - ${range%:*}-${range#*:}"
+    done
+    return 1  # Port is invalid
+}
+
 # Parse arguments
 ANTHROPIC_API_KEY="$1"
 AGENT_CONFIG_JSON="$2" 
@@ -44,8 +78,10 @@ if [ "$AGENT_COUNT" -gt 5 ] && [ "$MACHINE_TYPE" = "e2-small" ]; then
     fi
 fi
 
-# Validate port uniqueness
+# Validate port uniqueness and allowed ranges
 echo "Validating port configuration..."
+
+# Validate port uniqueness
 DUPLICATE_PORTS=$(echo "$AGENTS_JSON" | python3 -c "
 import json, sys
 from collections import Counter
@@ -59,6 +95,35 @@ if duplicates:
 
 if [ $? -eq 1 ]; then
     echo "❌ Duplicate ports found: $DUPLICATE_PORTS"
+    exit 1
+fi
+
+# Validate all ports are in allowed ranges
+echo "$AGENTS_JSON" | python3 -c "
+import json, sys
+agents = json.load(sys.stdin)
+invalid_ports = []
+for agent in agents:
+    port = agent['port']
+    # Check if port is in allowed ranges
+    allowed_ranges = [
+        (6000, 6100), (7000, 7100), (8000, 8100), (9000, 9100), (10000, 10100),
+        (11000, 11100), (12000, 12100), (13000, 13100), (14000, 14100), (15000, 15100)
+    ]
+    if not any(start <= port <= end for start, end in allowed_ranges):
+        invalid_ports.append(f'{agent[\"agent_id\"]}:{port}')
+
+if invalid_ports:
+    print('❌ Invalid ports found:')
+    for item in invalid_ports:
+        print(f'   - {item}')
+    print('Allowed port ranges: 6000-6100, 7000-7100, 8000-8100, 9000-9100, 10000-10100, 11000-11100, 12000-12100, 13000-13100, 14000-14100, 15000-15100')
+    sys.exit(1)
+else:
+    print('✅ All ports are in allowed ranges')
+"
+
+if [ $? -eq 1 ]; then
     exit 1
 fi
 
@@ -250,15 +315,18 @@ echo "All agents managed by supervisor on: $EXTERNAL_IP"
 STARTUP_EOF
 
 # Replace placeholders in startup script
-sed -i "s/DEPLOYMENT_ID_PLACEHOLDER/$DEPLOYMENT_ID/g" "startup_script_multi_${DEPLOYMENT_ID}.sh"
-sed -i "s/ANTHROPIC_API_KEY_PLACEHOLDER/$ANTHROPIC_API_KEY/g" "startup_script_multi_${DEPLOYMENT_ID}.sh"
-sed -i "s/SMITHERY_API_KEY_PLACEHOLDER/$SMITHERY_API_KEY/g" "startup_script_multi_${DEPLOYMENT_ID}.sh"
-sed -i "s|REGISTRY_URL_PLACEHOLDER|$REGISTRY_URL|g" "startup_script_multi_${DEPLOYMENT_ID}.sh"
-sed -i "s|MCP_REGISTRY_URL_PLACEHOLDER|$MCP_REGISTRY_URL|g" "startup_script_multi_${DEPLOYMENT_ID}.sh"
+sed -i '' "s/DEPLOYMENT_ID_PLACEHOLDER/$DEPLOYMENT_ID/g" "startup_script_multi_${DEPLOYMENT_ID}.sh"
+sed -i '' "s/ANTHROPIC_API_KEY_PLACEHOLDER/$ANTHROPIC_API_KEY/g" "startup_script_multi_${DEPLOYMENT_ID}.sh"
+sed -i '' "s/SMITHERY_API_KEY_PLACEHOLDER/$SMITHERY_API_KEY/g" "startup_script_multi_${DEPLOYMENT_ID}.sh"
+sed -i '' "s|REGISTRY_URL_PLACEHOLDER|$REGISTRY_URL|g" "startup_script_multi_${DEPLOYMENT_ID}.sh"
+sed -i '' "s|MCP_REGISTRY_URL_PLACEHOLDER|$MCP_REGISTRY_URL|g" "startup_script_multi_${DEPLOYMENT_ID}.sh"
 
 # Escape JSON for sed
-ESCAPED_AGENTS_JSON=$(echo "$AGENTS_JSON" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g' | sed 's/\$/\\$/g')
-sed -i "s/AGENTS_JSON_PLACEHOLDER/$ESCAPED_AGENTS_JSON/g" "startup_script_multi_${DEPLOYMENT_ID}.sh"
+# Create a separate JSON file and modify the startup script to use it
+echo "$AGENTS_JSON" > "agents_config_${DEPLOYMENT_ID}.json"
+# Replace the heredoc with a simple cat command
+sed -i '' '/AGENTS_JSON_PLACEHOLDER/r agents_config_'"${DEPLOYMENT_ID}"'.json' "startup_script_multi_${DEPLOYMENT_ID}.sh"
+sed -i '' '/AGENTS_JSON_PLACEHOLDER/d' "startup_script_multi_${DEPLOYMENT_ID}.sh"
 
 # Launch Compute Engine instance
 echo "[5/6] Launching Compute Engine instance..."
