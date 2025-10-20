@@ -139,6 +139,18 @@ if ! az network nsg show --resource-group "$RESOURCE_GROUP" --name "$NSG_NAME" &
             --output none
         PRIORITY=$((PRIORITY + 10))
     done
+    
+    # Add specific rule for the agent's port (in case it's not in the ranges)
+    az network nsg rule create \
+        --resource-group "$RESOURCE_GROUP" \
+        --nsg-name "$NSG_NAME" \
+        --name "AllowAgentPort${PORT}" \
+        --priority $PRIORITY \
+        --source-address-prefixes '*' \
+        --destination-port-ranges "$PORT" \
+        --access Allow \
+        --protocol Tcp \
+        --output none 2>/dev/null || echo "Port $PORT rule already exists or in range"
 fi
 echo -e "${GREEN}✅ Network security group: $NSG_NAME${NC}"
 
@@ -177,6 +189,8 @@ packages:
   - python3
   - python3-venv
   - python3-pip
+  - python3-dev
+  - build-essential
   - git
   - curl
   - jq
@@ -189,29 +203,50 @@ runcmd:
     echo "=== NANDA Agent Setup Started: ${DEPLOYMENT_ID} ==="
     date
     
-    # Setup project
-    cd /root
-    if [ ! -d nanda-agent ]; then
-        sudo -u git clone -b ${GIT_BRANCH} https://github.com/projnanda/NEST.git nanda-agent
-    else
-        echo "nanda-agent already present, skipping clone"
-    fi
-    cd nanda-agent
+    # Setup project as the non-root service user (azureuser) - simplified approach
+    cd /home/azureuser
+    sudo -u azureuser git clone https://github.com/projnanda/NEST.git nanda-agent-${AGENT_ID}
+    cd nanda-agent-${AGENT_ID}
     
-    # Create virtual environment
-    sudo -u python3 -m venv env
-    bash -c "sudo -u source env/bin/activate && pip install --upgrade pip && pip install -e . && pip install anthropic"
+    # Fetch all remote branches and ensure we're on the correct branch
+    echo "Fetching all remote branches..."
+    sudo -u azureuser git fetch --all
     
-    # Get public IP
+    # Checkout the specified branch
+    echo "Checking out branch: ${GIT_BRANCH}"
+    sudo -u azureuser git checkout ${GIT_BRANCH}
+    sudo -u azureuser git pull origin ${GIT_BRANCH}
+    echo "Successfully on ${GIT_BRANCH} branch with latest changes"
+    
+    # Create virtual environment and install (simplified)
+    sudo -u azureuser python3 -m venv env
+    sudo -u azureuser bash -c "source env/bin/activate && pip install --upgrade pip && pip install -e . && pip install anthropic"
+    
+    # Get public IP using multiple methods
     echo "Getting public IP address..."
-    PUBLIC_IP=\$(curl -s -H Metadata:true "http://169.254.169.254/metadata/instance/network/interface/0/ipv4/ipAddress/0/publicIpAddress?api-version=2021-02-01&format=text")
+    PUBLIC_IP=""
+    
+    # Try Azure metadata service first
+    PUBLIC_IP=\$(curl -s -H Metadata:true "http://169.254.169.254/metadata/instance/network/interface/0/ipv4/ipAddress/0/publicIpAddress?api-version=2021-02-01&format=text" 2>/dev/null)
+    
+    # If that fails, try external service
+    if [ -z "\$PUBLIC_IP" ]; then
+        echo "Azure metadata failed, trying external service..."
+        PUBLIC_IP=\$(curl -s --max-time 10 "https://api.ipify.org" 2>/dev/null)
+    fi
+    
+    # If still no IP, try another service
+    if [ -z "\$PUBLIC_IP" ]; then
+        echo "External service failed, trying alternative..."
+        PUBLIC_IP=\$(curl -s --max-time 10 "https://ifconfig.me/ip" 2>/dev/null)
+    fi
     
     if [ -z "\$PUBLIC_IP" ]; then
-        echo "ERROR: Could not retrieve public IP"
-        exit 1
+        echo "WARNING: Could not retrieve public IP, using placeholder"
+        PUBLIC_IP="0.0.0.0"
+    else
+        echo "Retrieved public IP: \$PUBLIC_IP"
     fi
-    
-    echo "Retrieved public IP: \$PUBLIC_IP"
     
     # Generate agent ID with hex suffix
     HEX_SUFFIX=\$(openssl rand -hex 3)
@@ -219,46 +254,25 @@ runcmd:
     
     echo "Generated agent_id: \$FULL_AGENT_ID"
     
-    # Create systemd service
-    cat > /etc/systemd/system/nanda-agent.service << 'SERVICE_EOF'
-[Unit]
-Description=NANDA Agent Service
-After=network.target
-
-[Service]
-Type=simple
-User=root
-WorkingDirectory=/root/nanda-agent
-Environment="ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}"
-Environment="AGENT_ID=\${FULL_AGENT_ID}"
-Environment="AGENT_NAME=${AGENT_NAME}"
-Environment="AGENT_DOMAIN=${AGENT_NAME}"
-Environment="AGENT_SPECIALIZATION=${SPECIALIZATION}"
-Environment="AGENT_DESCRIPTION=I am ${AGENT_NAME}, specializing in ${SPECIALIZATION}"
-Environment="AGENT_CAPABILITIES=${CAPABILITIES}"
-Environment="SMITHERY_API_KEY=${SMITHERY_API_KEY}"
-Environment="REGISTRY_URL=${AGENT_REGISTRY_URL}"
-Environment="MCP_REGISTRY_URL=${MCP_REGISTRY_URL}"
-Environment="PUBLIC_URL=http://\${PUBLIC_IP}:${PORT}"
-Environment="PORT=${PORT}"
-ExecStart=/root/nanda-agent/env/bin/python examples/nanda_agent.py
-Restart=always
-RestartSec=10
-StandardOutput=append:/var/log/nanda-agent.log
-StandardError=append:/var/log/nanda-agent.error.log
-
-[Install]
-WantedBy=multi-user.target
-SERVICE_EOF
-
-    # Replace the placeholder with actual value
-    sed -i "s/\\\${FULL_AGENT_ID}/\${FULL_AGENT_ID}/" /etc/systemd/system/nanda-agent.service
-    sed -i "s/\\\${PUBLIC_IP}/\${PUBLIC_IP}/" /etc/systemd/system/nanda-agent.service
-    
-    # Start the service
-    systemctl daemon-reload
-    systemctl enable nanda-agent
-    systemctl start nanda-agent
+    # Start the agent directly (simpler approach like AWS/GCP)
+    echo "Starting NANDA agent with PUBLIC_URL: http://\${PUBLIC_IP}:${PORT}"
+    sudo -u azureuser bash -c "
+        cd /home/azureuser/nanda-agent-${AGENT_ID}
+        source env/bin/activate
+        export ANTHROPIC_API_KEY='${ANTHROPIC_API_KEY}'
+        export AGENT_ID='\${FULL_AGENT_ID}'
+        export AGENT_NAME='${AGENT_NAME}'
+        export AGENT_DOMAIN='${AGENT_NAME}'
+        export AGENT_SPECIALIZATION='${SPECIALIZATION}'
+        export AGENT_DESCRIPTION='I am ${AGENT_NAME}, specializing in ${SPECIALIZATION}'
+        export AGENT_CAPABILITIES='${CAPABILITIES}'
+        export SMITHERY_API_KEY='${SMITHERY_API_KEY}'
+        export REGISTRY_URL='${AGENT_REGISTRY_URL}'
+        export MCP_REGISTRY_URL='${MCP_REGISTRY_URL}'
+        export PUBLIC_URL='http://\${PUBLIC_IP}:${PORT}'
+        export PORT='${PORT}'
+        nohup python3 examples/nanda_agent.py > agent.log 2>&1 &
+    "
     
     echo "=== NANDA Agent Setup Complete: ${DEPLOYMENT_ID} ==="
     echo "Agent is running at: http://\${PUBLIC_IP}:${PORT}/a2a"
@@ -307,13 +321,16 @@ echo "Public IP: $PUBLIC_IP"
 echo "Agent URL: http://$PUBLIC_IP:$PORT/a2a"
 echo ""
 echo "📊 Check agent status:"
-echo "  ssh azureuser@$PUBLIC_IP 'sudo systemctl status nanda-agent'"
+echo "  ssh azureuser@$PUBLIC_IP 'ps aux | grep nanda_agent'"
 echo ""
 echo "📋 View agent logs:"
-echo "  ssh azureuser@$PUBLIC_IP 'sudo journalctl -u nanda-agent -f'"
+echo "  ssh azureuser@$PUBLIC_IP 'tail -f /home/azureuser/nanda-agent-$AGENT_ID/agent.log'"
 echo ""
 echo "🔄 Restart agent:"
-echo "  ssh azureuser@$PUBLIC_IP 'sudo systemctl restart nanda-agent'"
+echo "  ssh azureuser@$PUBLIC_IP 'pkill -f nanda_agent && cd /home/azureuser/nanda-agent-$AGENT_ID && source env/bin/activate && nohup python3 examples/nanda_agent.py > agent.log 2>&1 &'"
+echo ""
+echo "🧪 Test agent:"
+echo "  curl -X POST http://$PUBLIC_IP:$PORT/a2a -H \"Content-Type: application/json\" -d '{\"content\":{\"text\":\"Hello!\",\"type\":\"text\"},\"role\":\"user\",\"conversation_id\":\"test\"}'"
 echo ""
 echo "🛑 To delete VM:"
 echo "  az vm delete --resource-group $RESOURCE_GROUP --name $VM_NAME --yes"
