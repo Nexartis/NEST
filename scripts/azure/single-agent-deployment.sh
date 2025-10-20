@@ -12,7 +12,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # Parse arguments
-AGENT_ID="$1"
+AGENT_ID="$1" # Removed stray 'd'
 ANTHROPIC_API_KEY="$2"
 AGENT_NAME="$3"
 GIT_BRANCH="${4:-main}"
@@ -190,13 +190,17 @@ runcmd:
     date
     
     # Setup project
-    cd /home/azureuser
-    sudo -u azureuser git clone -b ${GIT_BRANCH} https://github.com/projnanda/NEST.git nanda-agent
+    cd /root
+    if [ ! -d nanda-agent ]; then
+        sudo -u git clone -b ${GIT_BRANCH} https://github.com/projnanda/NEST.git nanda-agent
+    else
+        echo "nanda-agent already present, skipping clone"
+    fi
     cd nanda-agent
     
     # Create virtual environment
-    sudo -u azureuser python3 -m venv env
-    sudo -u azureuser bash -c "source env/bin/activate && pip install --upgrade pip && pip install -e . && pip install anthropic"
+    sudo -u python3 -m venv env
+    bash -c "sudo -u source env/bin/activate && pip install --upgrade pip && pip install -e . && pip install anthropic"
     
     # Get public IP
     echo "Getting public IP address..."
@@ -223,8 +227,8 @@ After=network.target
 
 [Service]
 Type=simple
-User=azureuser
-WorkingDirectory=/home/azureuser/nanda-agent
+User=root
+WorkingDirectory=/root/nanda-agent
 Environment="ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}"
 Environment="AGENT_ID=\${FULL_AGENT_ID}"
 Environment="AGENT_NAME=${AGENT_NAME}"
@@ -237,7 +241,7 @@ Environment="REGISTRY_URL=${AGENT_REGISTRY_URL}"
 Environment="MCP_REGISTRY_URL=${MCP_REGISTRY_URL}"
 Environment="PUBLIC_URL=http://\${PUBLIC_IP}:${PORT}"
 Environment="PORT=${PORT}"
-ExecStart=/home/azureuser/nanda-agent/env/bin/python examples/nanda_agent.py
+ExecStart=/root/nanda-agent/env/bin/python examples/nanda_agent.py
 Restart=always
 RestartSec=10
 StandardOutput=append:/var/log/nanda-agent.log
