@@ -183,12 +183,18 @@ class AgentBridge:
             if not agent_info:
                 logger.warning(f"🔍 Agent {target_agent_id} not found in registry")
                 return self._create_response(f"Agent {target_agent_id} not found")
+            protocol_name = "slim"  # <-- Force SLIM
+            target_url = f"slim://{target_agent_id}"  # <-- Force SLIM URL
             
+            logger.info(f"🧪 TEST MODE: Forcing SLIM protocol")
+            logger.info(f"📤 [{self.agent_id}] → [{target_agent_id}] via {protocol_name}")
+            logger.info(f"🔗 Target URL: {target_url}")
+
             # Debug: print what we got from registry
             logger.info(f"📋 Agent info from registry: {agent_info}")
             
             # Select protocol
-            supported_protocols = agent_info.get("supported_protocols", ["a2a"])
+            supported_protocols = agent_info.get("supported_protocols") or self.router.get_all_protocols()
             protocol_name = self.router.select_protocol(supported_protocols)
             
             # Get target URL - try multiple fields
@@ -196,13 +202,18 @@ class AgentBridge:
             target_url = endpoints.get(protocol_name)
             
             if not target_url:
-                # Try different URL fields
-                target_url = (
-                    agent_info.get("url") or 
-                    agent_info.get("agent_url") or 
-                    agent_info.get("public_url")
-                )
-            
+                # Fallback logic
+                if protocol_name == "slim":
+                    # For SLIM, construct the identifier
+                    target_url = f"slim://{target_agent_id}"
+                else:
+                    # For A2A, use URL fields
+                    target_url = (
+                        agent_info.get("url") or 
+                        agent_info.get("agent_url") or 
+                        agent_info.get("public_url")
+                    )
+
             # Ensure target_url is valid
             if not target_url:
                 logger.error(f"❌ No URL found for {target_agent_id}. Agent info: {agent_info}")

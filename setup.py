@@ -11,12 +11,16 @@ def read_requirements():
     """Read requirements from file"""
     requirements = [
         "anthropic>=0.18.0",
-        "a2a-sdk>=0.2.0",  # Official A2A SDK (replaced python-a2a)
-        "httpx>=0.27.0",  # For async HTTP (replaces requests)
-        "uvicorn>=0.30.0",  # ASGI server for A2A
-        "starlette>=0.37.0",  # For A2A server (included with a2a-sdk)
+        "a2a-sdk>=0.2.0",
+        "httpx>=0.27.0",
+        "uvicorn>=0.30.0",
+        "starlette>=0.37.0",
         "python-dotenv>=1.0.0",
-        "psutil>=5.9.0",  # For system monitoring
+        "psutil>=5.9.0",
+        # SLIM support
+        "slim-bindings>=0.1.0",  # Add this
+        "grpcio>=1.60.0",        # Add this
+        "protobuf>=4.25.0",      # Add this
     ]
     return requirements
 

@@ -65,7 +65,14 @@ Be helpful, accurate, and concise."""
         "public_url": os.getenv("PUBLIC_URL") or f"http://localhost:{os.getenv('PORT', '6000')}",
         "anthropic_api_key": os.getenv("ANTHROPIC_API_KEY"),
         "model": os.getenv("ANTHROPIC_MODEL", "claude-3-haiku-20240307"),
-        "system_prompt": system_prompt
+        "system_prompt": system_prompt,
+        "protocols": {
+            "a2a": {"enabled": True},
+            "slim": {
+                "enabled": os.getenv("SLIM_ENABLED", "false").lower() == "true",
+                "node_url": os.getenv("SLIM_NODE_URL", "grpc://localhost:50051")
+            }
+        }
     }
 
 # =============================================================================
@@ -144,7 +151,7 @@ async def main():
         registry_url=config["registry_url"],
         public_url=config["public_url"],
         enable_telemetry=True,
-        protocols={"a2a": {"enabled": True}}
+        protocols=config["protocols"]
     )
     
     print("\n💬 Try: 'Hello', 'What time is it?', '@other-agent Hello!'")

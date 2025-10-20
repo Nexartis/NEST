@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  slim-control-plane:
+    build:
+      context: https://github.com/agntcy/slim.git#main
+      dockerfile: control-plane/Dockerfile
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+  slim-data-plane:
+    build:
+      context: https://github.com/agntcy/slim.git#main
+      dockerfile: data-plane/Dockerfile
+    ports:
+      - "50051:50051"
+    environment:
+      - CONTROL_PLANE_URL=http://slim-control-plane:8080
+    restart: unless-stopped
+    depends_on:
+      - slim-control-plane

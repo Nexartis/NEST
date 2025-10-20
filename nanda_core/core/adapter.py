@@ -8,7 +8,7 @@ Simple, clean adapter focused on A2A communication without complexity.
 import os
 import asyncio
 import requests
-from typing import Optional, Callable
+from typing import Optional, Callable, Dict
 from .agent_bridge import AgentBridge
 from .registry_client import RegistryClient
 from ..protocols.router import ProtocolRouter
@@ -114,10 +114,19 @@ class NANDA:
             )
             self.router.register(a2a_protocol)
         
-        # TODO: Add SLIM protocol when implemented
-        # if self.protocols_config.get("slim", {}).get("enabled"):
-        #     slim_protocol = SLIMProtocol(...)
-        #     self.router.register(slim_protocol)
+        slim_config = self.protocols_config.get("slim", {})
+        if slim_config.get("enabled", False):
+            from ..protocols.slim.adapter import SLIMProtocol
+            
+            slim_node_url = slim_config.get("node_url", "grpc://localhost:50051")
+            
+            slim_protocol = SLIMProtocol(
+                agent_id=self.agent_id,
+                slim_node_url=slim_node_url,
+                agent_name=self.agent_name
+            )
+            self.router.register(slim_protocol)
+            print(f"🔌 SLIM protocol enabled (node: {slim_node_url})")
     
     async def start(self, register: bool = True):
         """Start the agent server"""
@@ -152,18 +161,15 @@ class NANDA:
         except Exception as e:
             print(f"⚠️ Registration error: {e}")
     
-    def _get_endpoints(self) -> dict:
-        """Get endpoints for all registered protocols
-        
-        Returns:
-            Dict mapping protocol names to endpoint URLs
-        """
+    def _get_endpoints(self) -> Dict[str, str]:
+        """Get endpoints for all registered protocols"""
         endpoints = {}
         for protocol_name in self.router.get_all_protocols():
             if protocol_name == "a2a":
                 endpoints["a2a"] = f"{self.public_url}/a2a"
             elif protocol_name == "slim":
-                endpoints["slim"] = f"grpc://{self.public_url}:50051"
+                # SLIM uses agent inbox channel, not HTTP endpoint
+                endpoints["slim"] = f"slim://{self.agent_id}"
         
         return endpoints
     

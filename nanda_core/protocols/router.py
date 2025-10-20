@@ -1,5 +1,6 @@
 from typing import Dict, List, Optional
 from .base import AgentProtocol
+import asyncio
 
 class ProtocolRouter:
     """Manages multiple protocol adapters and routes messages"""
@@ -68,6 +69,8 @@ class ProtocolRouter:
         Returns:
             Selected protocol name
         """
+        if "slim" in supported_protocols and "slim" in self.protocols:
+            return "slim"
         # Try to find first match from supported list
         for proto in supported_protocols:
             if proto in self.protocols:
@@ -84,16 +87,20 @@ class ProtocolRouter:
         raise ValueError("No protocols registered")
     
     async def start_all_servers(self, host: str, port: int):
-        """Start all registered protocol servers
+        """Start all registered protocol servers concurrently"""
+    
+        async def start_protocol(name, protocol):
+            try:
+                print(f"🚀 Starting {name} protocol...")
+                await protocol.start_server(host, port)
+            except Exception as e:
+                print(f"❌ Error starting {name}: {e}")
         
-        Note: For protocols that need different ports, override in protocol adapter
+        # Start all protocols as background tasks
+        tasks = [
+            asyncio.create_task(start_protocol(name, protocol))
+            for name, protocol in self.protocols.items()
+        ]
         
-        Args:
-            host: Host to bind to
-            port: Base port (protocols may use port+offset)
-        """
-        for name, protocol in self.protocols.items():
-            print(f"Starting {name} protocol server...")
-            # Each protocol handles its own server startup
-            # They can use different ports internally
-            await protocol.start_server(host, port)
+        # Wait for all to start (they run forever)
+        await asyncio.gather(*tasks)

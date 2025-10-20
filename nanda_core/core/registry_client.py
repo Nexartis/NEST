@@ -164,17 +164,18 @@ class RegistryClient:
         metadata = {
             "agent_id": agent_id,
             "agent_url": agent_info.get("agent_url"),
-            "url": agent_info.get("url"),  # New field
+            "url": agent_info.get("url"),
             "api_url": agent_info.get("api_url"),
-            "endpoints": agent_info.get("endpoints", {}),  # New field
-            "supported_protocols": agent_info.get("supported_protocols", ["a2a"]),  # New field
+            "endpoints": agent_info.get("endpoints", {}), 
+            "supported_protocols": agent_info.get("supported_protocols", ["a2a"]), 
             "last_seen": agent_info.get("last_seen"),
             "capabilities": agent_info.get("capabilities", []),
             "description": agent_info.get("description", ""),
             "tags": agent_info.get("tags", []),
-            "domain": agent_info.get("domain"),  # New field
-            "specialization": agent_info.get("specialization")  # New field
+            "domain": agent_info.get("domain"),  
+            "specialization": agent_info.get("specialization") 
         }
+        
         return metadata
 
     async def search_agents(self, query: str = "", capabilities: List[str] = None, 
