@@ -89,3 +89,5 @@ out.log
 .cache/
 
 test*
+
+*key*

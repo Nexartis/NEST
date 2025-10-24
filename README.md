@@ -26,7 +26,9 @@ bash scripts/aws-single-agent-deployment.sh \
   "specialization" \              # Role description
   "description" \                 # Detailed agent description
   "capabilities" \                # Comma-separated capabilities
-  "registry-url" \                # Registry URL 
+  "smithery-api-key" \            # Smithery API key (optional)
+  "registry-url" \                # Agent registry URL (optional)
+  "mcp-registry-url" \            # MCP registry URL (optional)
   "port" \                        # Port number 
   "region" \                      # AWS region 
   "instance-type"                 # EC2 instance type 
@@ -42,7 +44,9 @@ bash scripts/aws-single-agent-deployment.sh \
   "knowledgeable furniture specialist" \
   "I help with furniture selection and interior design" \
   "furniture,interior design,decor" \
+  "smithery-key-xxxxx" \
   "http://registry.chat39.com:6900" \
+  "https://your-mcp-registry.ngrok-free.app" \
   "6000" \
   "us-east-1" \
   "t3.micro"
@@ -115,7 +119,7 @@ curl -X POST http://agent-ip:{PORT}/a2a \
   -H "Content-Type: application/json" \
   -d '{
     "content": {
-      "text": "#smithery:fetch get current weather in NYC",
+      "text": "#smithery:@{mcp_server_name} get current weather in NYC",
       "type": "text"
     },
     "role": "user",
@@ -145,40 +149,6 @@ The agent will automatically:
 2. Connect to the server and get available tools
 3. Use Claude to intelligently select and execute the right tools
 4. Return formatted results
-
-## NANDA MCP Registry Setup
-
-To run your own NANDA MCP registry for internal MCP servers:
-
-```bash
-# Navigate to registry directory
-cd nanda_mcp_registry
-
-# Install dependencies
-pip install flask pymongo
-
-# Set environment variables
-export MONGO_URI="mongodb://localhost:27017/"
-export DB_NAME="nanda"
-export COLLECTION_NAME="mcp_servers"
-
-# Run the registry
-python app.py
-```
-
-The registry will start on `localhost:5001` and automatically includes a sample `nanda-points` server. You can register additional MCP servers via REST API:
-
-```bash
-# Register a new MCP server
-curl -X POST http://localhost:5001/mcp_servers \
-  -H "Content-Type: application/json" \
-  -d '{
-    "qualified_name": "my-server",
-    "server_url": "https://my-server.com/mcp",
-    "description": "My custom MCP server",
-    "tags": ["custom", "internal"]
-  }'
-```
 
 ## Available Agent Groups
 

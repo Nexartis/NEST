@@ -8,7 +8,7 @@ Production-ready scripts for deploying NANDA agents to AWS EC2.
 **`aws-single-agent-deployment.sh`** - Deploy one specialized agent to one EC2 instance
 
 ```bash
-bash aws-single-agent-deployment.sh <AGENT_ID> <API_KEY> <NAME> <DOMAIN> <SPECIALIZATION> <DESCRIPTION> <CAPABILITIES> [REGISTRY_URL] [PORT] [REGION] [INSTANCE_TYPE]
+bash aws-single-agent-deployment.sh <AGENT_ID> <API_KEY> <NAME> <DOMAIN> <SPECIALIZATION> <DESCRIPTION> <CAPABILITIES> [SMITHERY_API_KEY] [REGISTRY_URL] [MCP_REGISTRY_URL] [PORT] [REGION] [INSTANCE_TYPE]
 ```
 
 **Example:**
@@ -21,7 +21,9 @@ bash aws-single-agent-deployment.sh \
   "expert data analyst and machine learning specialist" \
   "I help with statistical analysis, machine learning, and data visualization" \
   "python,statistics,machine learning,data visualization" \
+  "smithery-key-xxxxx" \
   "http://registry.chat39.com:6900" \
+  "https://your-mcp-registry.ngrok-free.app" \
   "6000" \
   "us-east-1" \
   "t3.micro"

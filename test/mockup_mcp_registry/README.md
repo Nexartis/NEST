@@ -6,7 +6,7 @@ Simple Flask-based registry for NANDA MCP servers using MongoDB.
 
 1. Install dependencies:
 ```bash
-cd nanda_mcp_registry
+cd test/mockup_mcp_registry
 pip install -r requirements.txt
 ```
 
