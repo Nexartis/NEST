@@ -31,14 +31,14 @@ python app.py
 
 Test the nanda-points server:
 ```bash
-curl http://localhost:5000/mcp_servers/nanda-points
+curl http://localhost:5001/mcp_servers/nanda-points
 ```
 
 ## Ngrok Setup
 
 After starting the registry, expose it with ngrok:
 ```bash
-ngrok http 5000
+ngrok http 5001
 ```
 
 Then update your NANDA agents to use the ngrok URL as the MCP registry URL.

@@ -68,7 +68,8 @@ class MCPClient:
         except Exception as e:
             # Check for specific error types
             error_msg = str(e).lower()
-            return error_msg
+            logger.error(f"❌ [MCPClient] Error connecting to MCP server: {e}")
+            return None
 
     async def execute_query(self, query: str, server_url: str, transport_type: str = "http", auth_headers: Optional[Dict[str, str]] = None) -> str:
         """Execute query on MCP server without message improvement"""

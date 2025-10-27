@@ -70,7 +70,6 @@ fi
 echo "Cloning streamlined adapter..."
 git clone https://github.com/projnanda/NEST.git "$PROJECT_DIR"
 cd "$PROJECT_DIR"
-git checkout feature/mcp-tooling
 
 echo "[3/6] Creating Python virtual environment..."
 python3 -m venv env
