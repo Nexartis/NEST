@@ -207,7 +207,7 @@ def main():
         registry_url=AGENT_CONFIG["registry_url"],
         mcp_registry_url=AGENT_CONFIG["mcp_registry_url"],
         public_url=AGENT_CONFIG["public_url"],
-        enable_telemetry=False,
+        enable_telemetry=True,
         smithery_api_key=os.getenv("SMITHERY_API_KEY")
     )
     
@@ -267,7 +267,7 @@ When someone asks about yourself, mention that you're part of the NANDA agent ne
         port=port,
         registry_url=custom_config["registry_url"],
         mcp_registry_url=custom_config["mcp_registry_url"],
-        enable_telemetry=False,
+        enable_telemetry=True,
         smithery_api_key=os.getenv("SMITHERY_API_KEY")
     )
     
