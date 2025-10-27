@@ -8,14 +8,17 @@ set -e
 # Parse arguments
 ANTHROPIC_API_KEY="$1"
 AGENT_CONFIG_JSON="$2"
+# Optional Smithery API key for MCP access
 SMITHERY_API_KEY="$3"
 REGISTRY_URL="${4:-http://registry.chat39.com:6900}"
-REGION="${5:-us-east-1}"
-INSTANCE_TYPE="${6:-t3.large}"  # Upgraded for 10 agents
+# Optional NANDA MCP registry URL
+MCP_REGISTRY_URL="${5:-}"
+REGION="${6:-us-east-1}"
+INSTANCE_TYPE="${7:-t3.large}"  # Upgraded for 10 agents
 
 # Validation
-if [ -z "$ANTHROPIC_API_KEY" ] || [ -z "$AGENT_CONFIG_JSON" ] || [ -z "$SMITHERY_API_KEY" ]; then
-    echo "❌ Usage: $0 <ANTHROPIC_API_KEY> <AGENT_CONFIG_JSON> <SMITHERY_API_KEY> [REGISTRY_URL] [REGION] [INSTANCE_TYPE]"
+if [ -z "$ANTHROPIC_API_KEY" ] || [ -z "$AGENT_CONFIG_JSON" ]; then
+    echo "❌ Usage: $0 <ANTHROPIC_API_KEY> <AGENT_CONFIG_JSON> [SMITHERY_API_KEY] [REGISTRY_URL] [MCP_REGISTRY_URL] [REGION] [INSTANCE_TYPE]"
     exit 1
 fi
 
@@ -192,6 +195,7 @@ while IFS= read -r agent_config; do
     echo "Configuring supervisor for agent: \$AGENT_ID"
     
     # Create supervisor configuration file
+[...existing code...]
     cat > "/etc/supervisor/conf.d/agent_\$AGENT_ID.conf" << SUPERVISOR_EOF
 [program:agent_\$AGENT_ID]
 command=/home/ubuntu/nanda-multi-agents/env/bin/python examples/nanda_agent.py
@@ -212,6 +216,7 @@ environment=
     AGENT_DESCRIPTION="\$DESCRIPTION",
     AGENT_CAPABILITIES="\$CAPABILITIES",
     REGISTRY_URL="$REGISTRY_URL",
+    MCP_REGISTRY_URL="$MCP_REGISTRY_URL",
     PUBLIC_URL="http://\$PUBLIC_IP:\$PORT",
     PORT="\$PORT"
 

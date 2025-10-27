@@ -33,7 +33,7 @@ bash aws-single-agent-deployment.sh \
 **`aws-multi-agent-deployment.sh`** - Deploy 10 agents to one EC2 instance
 
 ```bash
-bash aws-multi-agent-deployment.sh <API_KEY> <CONFIG_JSON> [REGISTRY_URL] [REGION] [INSTANCE_TYPE]
+bash aws-multi-agent-deployment.sh <API_KEY> <CONFIG_JSON> [SMITHERY_API_KEY] [REGISTRY_URL] [MCP_REGISTRY_URL] [REGION] [INSTANCE_TYPE]
 ```
 
 **Example:**
@@ -41,7 +41,9 @@ bash aws-multi-agent-deployment.sh <API_KEY> <CONFIG_JSON> [REGISTRY_URL] [REGIO
 bash aws-multi-agent-deployment.sh \
   "sk-ant-api03-..." \
   "agent_configs/group-01-business-and-finance-experts.json" \
+  "smithery-key-xxxxx" \
   "http://registry.chat39.com:6900" \
+  "https://your-mcp-registry.ngrok-free.app" \
   "us-east-1" \
   "t3.xlarge"
 ```

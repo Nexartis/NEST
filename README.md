@@ -58,7 +58,9 @@ bash scripts/aws-single-agent-deployment.sh \
 bash scripts/aws-multi-agent-deployment.sh \
   "your-api-key" \
   "scripts/agent_configs/group-01-business-and-finance-experts.json" \
+  "smithery-key-xxxxx" \
   "http://registry.chat39.com:6900" \
+  "https://your-mcp-registry.ngrok-free.app" \
   "us-east-1" \
   "t3.xlarge"
 ```
