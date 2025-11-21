@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
-"""
-Core components for the Streamlined NANDA Adapter
-"""
+# """
+# NANDA Core - Agent coordination and deployment framework
+# """
 
-from .adapter import NANDA
-from .agent_bridge import SimpleAgentBridge
+# from .core.adapter import NANDA
 
-__all__ = [
-    "NANDA",
-    "SimpleAgentBridge"
-]
+# __version__ = "1.0.0"
+# __all__ = ['NANDA']

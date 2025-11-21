@@ -13,6 +13,9 @@ import asyncio
 from typing import Callable, Optional, Dict, Any
 from python_a2a import A2AServer, A2AClient, Message, TextContent, MessageRole, Metadata
 
+# Import AgentInterface
+from ..interface import AgentInterface
+
 # MCP imports
 try:
     from .mcp_client import MCPClient
@@ -30,14 +33,25 @@ class SimpleAgentBridge(A2AServer):
     
     def __init__(self, 
                  agent_id: str, 
-                 agent_logic: Callable[[str, str], str],
+                 agent: AgentInterface,
                  registry_url: Optional[str] = None,
                  telemetry = None,
                  mcp_registry_url: Optional[str] = None,
                  smithery_api_key: Optional[str] = None):
+        """
+        Initialize bridge with AgentInterface.
+        
+        Args:
+            agent_id: Unique agent identifier
+            agent: AgentInterface implementation
+            registry_url: Optional registry URL
+            telemetry: Optional telemetry system
+            mcp_registry_url: Optional MCP registry URL
+            smithery_api_key: Optional Smithery API key
+        """
         super().__init__()
         self.agent_id = agent_id
-        self.agent_logic = agent_logic
+        self.agent = agent
         self.registry_url = registry_url
         self.telemetry = telemetry
         self.mcp_registry_url = mcp_registry_url
@@ -45,6 +59,7 @@ class SimpleAgentBridge(A2AServer):
         
         # Debug logging
         logger.info(f"🔧 [AgentBridge] Agent ID: {agent_id}")
+        logger.info(f"🔧 [AgentBridge] Agent Type: {type(agent).__name__}")
         logger.info(f"🔧 [AgentBridge] Registry URL: {registry_url}")
         logger.info(f"🔧 [AgentBridge] MCP Registry URL: {self.mcp_registry_url}")
         logger.info(f"🔧 [AgentBridge] Smithery API Key: {'Set' if self.smithery_api_key else 'Not set'}")
@@ -89,11 +104,19 @@ class SimpleAgentBridge(A2AServer):
                 logger.info(f"⚙️ [{self.agent_id}] Processing / command")
                 return self._handle_command(user_text, msg, conversation_id)
             else:
-                # Regular message - use agent logic
+                # Regular message - use agent interface
                 if self.telemetry:
                     self.telemetry.log_message_received(self.agent_id, conversation_id)
                 
-                response = self.agent_logic(user_text, conversation_id)
+                # Create context for agent
+                context = {
+                    "conversation_id": conversation_id,
+                    "sender_id": msg.metadata.custom_fields.get('from_agent_id') if msg.metadata else None,
+                    "metadata": msg.metadata.custom_fields if msg.metadata else {}
+                }
+                
+                # Call agent's process_message
+                response = self.agent.process_message(user_text, context)
                 return self._create_response(msg, conversation_id, response)
                 
         except Exception as e:
@@ -129,11 +152,19 @@ class SimpleAgentBridge(A2AServer):
                     f"[{from_agent}] {message_content[len('Response to ' + self.agent_id + ': '):]}"
                 )
             
-            # Process the message through our agent logic
+            # Process the message through our agent
             if self.telemetry:
                 self.telemetry.log_message_received(self.agent_id, conversation_id)
             
-            response = self.agent_logic(message_content, conversation_id)
+            # Create context
+            context = {
+                "conversation_id": conversation_id,
+                "sender_id": from_agent,
+                "metadata": {"from_agent": from_agent, "to_agent": to_agent}
+            }
+            
+            # Call agent's process_message
+            response = self.agent.process_message(message_content, context)
             
             # Send response back
             return self._create_response(
@@ -191,6 +222,7 @@ class SimpleAgentBridge(A2AServer):
                 status += f", Registry: {self.registry_url}"
             if self.mcp_registry_url:
                 status += f", MCP Registry: {self.mcp_registry_url}"
+            status += f", Agent Type: {type(self.agent).__name__}"
             return self._create_response(msg, conversation_id, status)
         
         else:
