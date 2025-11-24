@@ -117,6 +117,11 @@ class SimpleAgentBridge(A2AServer):
                 
                 # Call agent's process_message
                 response = self.agent.process_message(user_text, context)
+                if self.telemetry:
+                    self.telemetry.log_event('agent_processed', {
+                        'conversation_id': conversation_id,
+                        'response_preview': response
+                    })
                 return self._create_response(msg, conversation_id, response)
                 
         except Exception as e:
@@ -271,15 +276,17 @@ class SimpleAgentBridge(A2AServer):
             
             logger.info(f"🔧 [{self.agent_id}] MCP Request: registry={registry_part}, server={server_name}, query={query[:50]}...")
             
-            # Only check for mcp_registry_url if using NANDA registry (Smithery has its own registry)
-            if registry_part.lower() == "nanda" and not self.mcp_registry_url:
+            logger.info(f"🔧 [{self.agent_id}] Checking mcp_registry_url: {self.mcp_registry_url}")
+            logger.info(f"🔧 [{self.agent_id}] Registry part: {registry_part}")
+
+            if registry_part.lower() != "smithery" and not self.mcp_registry_url:
+                logger.error(f"❌ [{self.agent_id}] MCP registry URL required for {registry_part}")
                 return self._create_response(
                     msg, conversation_id,
-                    "❌ NANDA MCP registry URL not configured. Please set MCP_REGISTRY_URL environment variable."
+                    f"❌ MCP registry URL not configured for {registry_part} servers"
                 )
-            
-            logger.info(f"🔧 [{self.agent_id}] Creating MCPRegistry with MCP URL: {self.mcp_registry_url}")
-            logger.info(f"🔧 [{self.agent_id}] Agent registry URL: {self.registry_url}")
+
+            logger.info(f"✅ [{self.agent_id}] Registry check passed")
             
             # Get server info from registry
             mcp_registry = MCPRegistry(self.mcp_registry_url, self.registry_url)
@@ -350,7 +357,22 @@ class SimpleAgentBridge(A2AServer):
                 logger.info(f"🔧 [{self.agent_id}] Added Smithery API key to URL")
             
             # Use execute_query - it handles everything: connection, tool selection, execution
-            client = MCPClient()
+            provider = os.getenv("LLM_PROVIDER")
+
+            if os.getenv("LLM_API_KEY"):
+                api_key = os.getenv("LLM_API_KEY")
+            elif provider == "anthropic":
+                api_key = os.getenv("ANTHROPIC_API_KEY")
+            elif provider == "openai":
+                api_key = os.getenv("OPENAI_API_KEY")
+            elif provider == "gemini":
+                api_key = os.getenv("GOOGLE_API_KEY")
+            else:
+                api_key = None
+
+            logger.info(f"provider: {provider}, key: {api_key}")
+            client = MCPClient(api_key=api_key, provider=provider)  
+            
             result = await client.execute_query(query, final_server_url, auth_headers=auth_headers)
             return result
             

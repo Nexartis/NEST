@@ -72,11 +72,23 @@ class NANDA:
         
         # Initialize telemetry if enabled
         self.telemetry = None
+        self.log_server = None
         if enable_telemetry:
             try:
                 from ..telemetry.telemetry_system import TelemetrySystem
+                from ..telemetry.log_server import LogStreamServer
+                
                 self.telemetry = TelemetrySystem(agent_id)
+                
+                # Start log streaming server on port+1
+                self.log_server = LogStreamServer(
+                    telemetry_system=self.telemetry,
+                    port=port + 1
+                )
+                self.log_server.start()
+                
                 print(f"📊 Telemetry enabled for {agent_id}")
+                print(f"📡 Logs: http://localhost:{port + 1}/logs")
             except ImportError:
                 print(f"⚠️ Telemetry requested but module not available")
         

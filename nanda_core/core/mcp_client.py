@@ -13,17 +13,52 @@ from mcp import ClientSession
 from mcp.client.sse import sse_client
 from mcp.client.streamable_http import streamablehttp_client
 import mcp
-from anthropic import Anthropic
 import os
 
+from ..llm.factory import create_llm_provider
+from ..llm.base import LLMProvider
+from ..llm.gemini import GeminiProvider
+from ..llm.openai import OpenAIProvider
 
 class MCPClient:
     """Streamlined MCP client without message preprocessing"""
 
-    def __init__(self):
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        provider: Optional[str] = None,
+        model: Optional[str] = None
+    ):
+        """
+        Initialize MCP client with LLM provider.
+        
+        Args:
+            api_key: LLM API key (auto-detects from env if None)
+            provider: LLM provider name (auto-detected from key if None)
+            model: Model name (uses default if None)
+        """
         self.session = None
         self.exit_stack = AsyncExitStack()
-        self.anthropic = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY", ""))
+        
+        # Get API key from env if not provided
+        if api_key is None:
+            api_key = (
+                os.getenv("ANTHROPIC_API_KEY") or
+                os.getenv("OPENAI_API_KEY") or
+                os.getenv("GOOGLE_API_KEY")
+            )
+        
+        if not api_key:
+            raise ValueError(
+                "No API key provided. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, "
+                "or GOOGLE_API_KEY environment variable, or pass api_key parameter."
+            )
+        
+        # Create LLM provider (auto-detects from key if provider not specified)
+        self.llm = create_llm_provider(api_key, provider, model)
+        
+        logger = logging.getLogger(__name__)
+        logger.info(f"🤖 [MCPClient] Using {type(self.llm).__name__} for MCP tool orchestration")
 
     async def connect_to_server(self, server_url: str, transport_type: str = "http", auth_headers: Optional[Dict[str, str]] = None) -> Optional[List[Any]]:
         """Connect to MCP server and return available tools"""
@@ -72,7 +107,7 @@ class MCPClient:
             return None
 
     async def execute_query(self, query: str, server_url: str, transport_type: str = "http", auth_headers: Optional[Dict[str, str]] = None) -> str:
-        """Execute query on MCP server without message improvement"""
+        """Execute query on MCP server with pluggable LLM"""
         try:
             logger = logging.getLogger(__name__)
             
@@ -91,70 +126,108 @@ class MCPClient:
                 "input_schema": tool.inputSchema
             } for tool in tools]
             
-            logger.info(f"🎯 [MCPClient] Available tools for Claude: {[t['name'] for t in available_tools]}")
+            logger.info(f"🎯 [MCPClient] Available tools: {[t['name'] for t in available_tools]}")
 
             messages = [{"role": "user", "content": query}]
-            logger.info(f"🎯 [MCPClient] Sending query to Claude with {len(available_tools)} tools")
+            logger.info(f"🎯 [MCPClient] Calling LLM with {len(available_tools)} tools")
 
-            message = self.anthropic.messages.create(
-                model="claude-3-haiku-20240307",
-                max_tokens=1024,
-                messages=messages,
-                tools=available_tools
-            )
+            # Call LLM with tools using abstracted provider
+            response = self.llm.call_with_tools(messages, available_tools)
             
-            logger.info(f"🎯 [MCPClient] Claude response received with {len(message.content)} content blocks")
+            logger.info(f"🎯 [MCPClient] LLM response received")
+            logger.info(f"🎯 [MCPClient] Response type: {type(response)}")
+            logger.info(f"🎯 [MCPClient] Response has content: {hasattr(response, 'content')}")
+            logger.info(f"🎯 [MCPClient] Response: {str(response)[:500]}")
 
+            # Tool calling loop
             while True:
-                has_tool_calls = False
+                tool_calls = self.llm.extract_tool_calls(response)
+                logger.info(f"🎯 [MCPClient] Extracted {len(tool_calls)} tool calls")
 
-                for block in message.content:
-                    if block.type == "tool_use":
-                        has_tool_calls = True
-                        logger.info(f"🔧 [MCPClient] Claude wants to use tool: {block.name}")
-                        logger.info(f"🔧 [MCPClient] Tool input: {block.input}")
-                        
-                        result = await self.session.call_tool(block.name, block.input)
-                        logger.info(f"🔧 [MCPClient] Raw tool result: {str(result)[:300]}...")
-                        
-                        processed_result = self._parse_result(result)
-                        logger.info(f"🔧 [MCPClient] Processed tool result: {str(processed_result)[:300]}...")
+                if not tool_calls:
+                    break
+                
+                for tool_call in tool_calls:
+                    logger.info(f"🔧 [MCPClient] LLM wants to use tool: {tool_call['name']}")
+                    logger.info(f"🔧 [MCPClient] Tool input: {tool_call['input']}")
+                    
+                    # Execute tool via MCP
+                    result = await self.session.call_tool(tool_call['name'], tool_call['input'])
+                    logger.info(f"🔧 [MCPClient] Raw tool result: {str(result)[:300]}...")
+                    
+                    processed_result = self._parse_result(result)
+                    logger.info(f"🔧 [MCPClient] Processed tool result: {str(processed_result)[:300]}...")
 
+                    if isinstance(self.llm, GeminiProvider):
+                        # Gemini doesn't need assistant tool call message
+                        pass
+                    elif isinstance(self.llm, OpenAIProvider):
+                        messages.append({
+                            "role": "assistant",
+                            "content": None,
+                            "tool_calls": [{
+                                "id": tool_call["id"],
+                                "type": "function",
+                                "function": {
+                                    "name": tool_call["name"],
+                                    "arguments": json.dumps(tool_call["input"])
+                                }
+                            }]
+                        })
+                    else:
+                        # Anthropic/OpenAI format
                         messages.append({
                             "role": "assistant",
                             "content": [{
                                 "type": "tool_use",
-                                "id": block.id,
-                                "name": block.name,
-                                "input": block.input
+                                "id": tool_call["id"],
+                                "name": tool_call["name"],
+                                "input": tool_call["input"]
                             }]
                         })
+                    # Add tool result using provider-specific format
+                    tool_result_msg = self.llm.format_tool_result(
+                        tool_call["id"],
+                        str(processed_result)
+                    )
+                    logger.info(f"🔧 [MCPClient] Formatted tool result message: {tool_result_msg}")
+                    messages.append(tool_result_msg)
+                    logger.info(f"🔧 [MCPClient] Messages before next LLM call: {len(messages)} messages")
+                    logger.info(f"🔧 [MCPClient] Last 2 messages: {messages[-2:] if len(messages) >= 2 else messages}")
 
-                        messages.append({
-                            "role": "user",
-                            "content": [{
-                                "type": "tool_result",
-                                "tool_use_id": block.id,
-                                "content": str(processed_result)
-                            }]
-                        })
+                
+                # Call LLM again with tool results
+                logger.info(f"🔧 [MCPClient] Calling LLM again with tool results...")
+                response = self.llm.call_with_tools(messages, available_tools)
+                logger.info(f"🔧 [MCPClient] Got response from LLM after tool result")
 
-                if not has_tool_calls:
-                    break
+                # ADD THESE LINES:
+                logger.info(f"🔧 [MCPClient] Response type after tool: {type(response)}")
+                logger.info(f"🔧 [MCPClient] Response object: {response}")
+                logger.info(f"🔧 [MCPClient] Attempting to extract tool calls...")
 
-                message = self.anthropic.messages.create(
-                    model="claude-3-haiku-20240307",
-                    max_tokens=1024,
-                    messages=messages,
-                    tools=available_tools
-                )
+                try:
+                    tool_calls_after = self.llm.extract_tool_calls(response)
+                    logger.info(f"🔧 [MCPClient] Tool calls after: {len(tool_calls_after)}")
+                except Exception as e:
+                    logger.error(f"❌ [MCPClient] Error extracting tool calls after: {e}")
+                    import traceback
+                    traceback.print_exc()
 
-            final_response = ""
-            for block in message.content:
-                if block.type == "text":
-                    final_response += block.text + "\n"
 
-            return self._parse_result(final_response.strip()) if final_response else "No response generated"
+            # Extract final text response
+            logger.info(f"🎯 [MCPClient] Loop ended, extracting final text")
+            try:
+                final_response = self.llm.extract_text_content(response)
+                logger.info(f"🎯 [MCPClient] Final response extracted: {final_response[:200] if final_response else 'None'}")
+            except Exception as e:
+                logger = logging.getLogger(__name__)
+                logger.error(f"❌ [MCPClient] Error executing MCP query: {e}")
+                import traceback
+                traceback.print_exc()  # ADD THIS LINE
+                return f"❌ MCP error: {str(e)}"
+
+            return self._parse_result(final_response) if final_response else "No response generated"
 
         except Exception as e:
             logger = logging.getLogger(__name__)
