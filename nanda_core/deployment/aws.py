@@ -22,26 +22,25 @@ class AWSDeployer:
     Uses existing Terraform scripts from NEST for infrastructure deployment.
     """
     
-    def __init__(self, credentials: Optional[Dict[str, str]] = None):
+    def __init__(self, terraform_dir: Optional[str] = None, credentials: Optional[Dict[str, str]] = None):
         """
         Initialize AWS deployer.
         
         Args:
-            credentials: AWS credentials dict with 'access_key_id' and 'secret_access_key'
-                        If None, uses environment variables or AWS config
+            terraform_dir: Path to Terraform directory (required)
+            credentials: AWS credentials
         """
         self.credentials = credentials
         
         # Find terraform directory (assumes we're in nanda_core/deployment)
-        self.nest_root = Path(__file__).parent.parent.parent
-        self.terraform_dir = self.nest_root / "terraform"
+        if terraform_dir is None:
+            raise ValueError("terraform_dir is required. Provide path to your Terraform infrastructure.")
+        
+        self.terraform_dir = Path(terraform_dir)
         
         if not self.terraform_dir.exists():
-            raise FileNotFoundError(
-                f"Terraform directory not found at {self.terraform_dir}. "
-                "Make sure you're running from NEST repository."
-            )
-        
+            raise FileNotFoundError(f"Terraform directory not found at {self.terraform_dir}")
+    
         print(f"📁 Terraform directory: {self.terraform_dir}")
     
     def deploy(
