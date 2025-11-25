@@ -66,7 +66,9 @@ class TunnelDeployer:
         
         try:
             # Create tunnel
+            print("here")
             tunnel = ngrok.connect(port, protocol)
+            print("here as well")
             public_url = tunnel.public_url
             
             print(f"✅ Tunnel created: {public_url}")

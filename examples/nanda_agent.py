@@ -16,11 +16,14 @@ from typing import Dict, List, Any
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from nanda_core.core.adapter import NANDA
+from nanda_core.deployment.tunnel import TunnelDeployer
 
 from dotenv import load_dotenv
 load_dotenv()
 
-# Try to import Anthropic - will fail gracefully if not available
+
+tunnel_enabled = os.getenv("ENABLE_TUNNEL", "false").lower() == "true"
+
 try:
     from anthropic import Anthropic
     ANTHROPIC_AVAILABLE = True
@@ -125,7 +128,8 @@ When someone asks about yourself, mention that you're part of the NANDA agent ne
         "llm_provider": llm_provider,      # NEW
         "llm_api_key": llm_api_key,        # NEW
         "llm_model": llm_model,            # NEW
-        "model": llm_model  # Alias
+        "model": llm_model,
+        "tunnel_enabled": tunnel_enabled
     }
 
 # Load configuration
@@ -282,6 +286,39 @@ def main():
         enable_telemetry=True,
         smithery_api_key=os.getenv("SMITHERY_API_KEY")
     )
+
+    tunnel_url = None
+    if AGENT_CONFIG["tunnel_enabled"]:
+        try:
+            print("🌐 Starting ngrok tunnel...")
+            tunnel = TunnelDeployer()
+            print(f"PORT: {PORT}")
+            tunnel_url = tunnel.deploy_local(port=PORT)
+            print(f"✅ Tunnel URL: {tunnel_url}")
+
+            print(f"🔍 Active tunnels:")
+            active_tunnels = tunnel.get_active_tunnels()
+            for t in active_tunnels:
+                print(f"  {t.public_url} -> localhost:{t.config['addr']}")
+
+            # print("🌐 Starting ngrok tunnel for telemetry...")
+            # telemetry_url = tunnel.deploy_local(port=PORT + 1)
+            # print(f"✅ Telemetry tunnel: {telemetry_url}")
+            # print(f"📊 Access logs at: {telemetry_url}/logs")
+            # print(f"📡 Stream logs at: {telemetry_url}/logs/stream")
+            
+            # print(f"🔍 Active tunnels:")
+            # active_tunnels = tunnel.get_active_tunnels()
+            # for t in active_tunnels:
+            #     print(f"  {t.public_url} -> localhost:{t.config['addr']}")
+            # Update public URL if registry enabled
+            if AGENT_CONFIG["registry_url"]:
+                AGENT_CONFIG["public_url"] = tunnel_url
+                # Re-register with tunnel URL
+                nanda.register_with_registry()
+        except Exception as e:
+            print(f"⚠️ Failed to start tunnel: {e}")
+            print("Agent will run on localhost only")
     
     print(f"🚀 Agent URL: http://localhost:{PORT}/a2a")
     print("💡 Try these messages:")
