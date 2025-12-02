@@ -48,7 +48,6 @@ test_logs/
 
 # IDE
 .vscode/
-.github/
 .idea/
 *.swp
 *.swo
@@ -88,6 +87,7 @@ out.log
 *.temp
 .cache/
 
-test*
+# Ignore test files in root (not tests/ directory)
+/test_*.py
 
 *key*

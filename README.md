@@ -1,5 +1,7 @@
 # NEST - NANDA Sandbox and Testbed
 
+[![CI](https://github.com/projnanda/NEST/actions/workflows/ci.yml/badge.svg)](https://github.com/projnanda/NEST/actions/workflows/ci.yml)
+
 A production-ready framework for deploying and managing specialized AI agents with seamless agent-to-agent communication and intelligent discovery.
 
 **NEST** (NANDA Sandbox and Testbed) is part of Project NANDA (Networked AI Agents in Decentralized Architecture) - a comprehensive ecosystem for intelligent agent deployment and coordination.
