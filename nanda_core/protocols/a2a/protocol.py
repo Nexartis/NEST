@@ -232,3 +232,9 @@ class A2AProtocol(AgentProtocol):
     def get_protocol_name(self) -> str:
         """Return protocol identifier"""
         return "a2a"
+
+    async def cleanup(self):
+        """Clean up A2A protocol resources"""
+        if self.httpx_client:
+            await self.httpx_client.aclose()
+            print(f"🧹 Closed HTTP client for A2A protocol")

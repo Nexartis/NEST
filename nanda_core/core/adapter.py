@@ -168,7 +168,21 @@ class NANDA:
         return endpoints
     
     def stop(self):
-        """Stop the agent and cleanup telemetry"""
+        """Stop the agent and cleanup resources"""
+        # Cleanup protocol resources
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # If we're already in an event loop, schedule the cleanup
+                asyncio.create_task(self.router.cleanup_all())
+            else:
+                # Otherwise, run it synchronously
+                asyncio.run(self.router.cleanup_all())
+        except Exception as e:
+            print(f"⚠️  Error during protocol cleanup: {e}")
+
+        # Cleanup telemetry
         if self.telemetry:
             self.telemetry.stop()
+
         print(f"🛑 Stopping agent '{self.agent_id}'")

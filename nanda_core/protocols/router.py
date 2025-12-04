@@ -85,9 +85,9 @@ class ProtocolRouter:
     
     async def start_all_servers(self, host: str, port: int):
         """Start all registered protocol servers
-        
+
         Note: For protocols that need different ports, override in protocol adapter
-        
+
         Args:
             host: Host to bind to
             port: Base port (protocols may use port+offset)
@@ -97,3 +97,15 @@ class ProtocolRouter:
             # Each protocol handles its own server startup
             # They can use different ports internally
             await protocol.start_server(host, port)
+
+    async def cleanup_all(self):
+        """Clean up all registered protocol resources
+
+        Called when agent is stopping to ensure all protocols
+        properly release their resources (HTTP clients, connections, etc.)
+        """
+        for name, protocol in self.protocols.items():
+            try:
+                await protocol.cleanup()
+            except Exception as e:
+                print(f"⚠️  Error cleaning up {name} protocol: {e}")

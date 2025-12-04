@@ -50,3 +50,11 @@ class AgentProtocol(ABC):
     def get_protocol_name(self) -> str:
         """Return protocol identifier (a2a, slim, etc.)"""
         pass
+
+    @abstractmethod
+    async def cleanup(self):
+        """Clean up protocol resources (HTTP clients, connections, etc.)
+
+        Called when agent is stopping to ensure proper resource cleanup.
+        """
+        pass
