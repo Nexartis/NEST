@@ -527,31 +527,49 @@ Build high-quality, developer-friendly, well-documented unit tests for all 5 cor
 
 **CRITICAL: Every test must follow these standards:**
 
-1. **Well Documented**
-   - Clear docstring explaining what is tested and why
-   - Include Given-When-Then format
-   - Explain business/technical importance
+1. **Best Practice**
+   - Test actual function behavior, not mock setups
+   - Every test must have meaningful assertions (no empty tests)
+   - Use fixtures for reusable test data
+   - Use `pytestmark` for module-level markers
+   - Avoid assertions with trailing commas (creates tuple, not assertion)
 
-2. **Developer Friendly**
-   - Descriptive test names: `test_[scenario]_[expected_outcome]`
-   - Clear variable names
-   - Logical test organization
-   - Easy to understand flow
+2. **Well Documented**
+   - Clear docstring with Given-When-Then format
+   - Module docstring explaining test coverage scope
+   - Class docstrings describing test group purpose
 
-3. **Provide Diagnostic Information**
-   - When assertions fail, include helpful error messages
-   - Suggest possible causes
-   - Provide solutions or next steps
-   - Reference relevant documentation/code locations
+3. **Developer Friendly**
+   - Descriptive test names: `test_[action]_[expected_result]`
+   - Error messages with three parts:
+     - **Expected vs Got**: What was expected and what actually happened
+     - **Cause**: Likely reason for failure
+     - **Fix**: How to resolve the issue
+   - Example: `f"Expected '{expected}', got '{actual}'. Cause: X changed. Fix: Check Y()"`
 
-4. **No Emojis in Test Code**
+4. **No Redundancy**
+   - No duplicate test logic across test classes
+   - Use fixtures instead of repeating setup code
+   - Each test verifies one specific behavior
+   - Remove tests that always pass (e.g., only checking `isinstance`)
+
+5. **Highly Structured**
+   - One test class per feature area
+   - Consistent naming: `TestFeatureName` for classes
+   - Group related tests in same class
+   - Use section comments to separate test categories
+   - Example structure:
+     ```
+     # =============================================================================
+     # Tests: Feature Name
+     # =============================================================================
+     class TestFeatureName:
+         """Tests for feature description."""
+     ```
+
+6. **No Emojis in Test Code**
    - Keep test output professional
    - Use clear text messages instead
-
-5. **Easy to Read Messages**
-   - Use descriptive assertion messages
-   - Format: "Expected X, got Y" or "Should Z, but..."
-   - Include context (what was being tested)
 
 ### Test Template (Standard Format)
 
@@ -620,59 +638,59 @@ class TestComponentName:
         )
 ```
 
-### Current Status (22 tests total)
+### Current Status (75 unit tests)
 
 | Area | File | Tests | Status |
 |------|------|-------|--------|
-| Framework adapters | `test_framework_adapters.py` | 3 | Basic, needs expansion |
-| Protocol router | `test_protocol_router.py` | 3 | Basic, needs edge cases |
-| Protocol adapters | `test_protocol_adapters.py` | 3 | Basic, needs A2A/SLIM tests |
-| @mention routing | `test_mention_extraction_and_routing.py` | 4 | Basic, needs extraction logic |
-| AgentFacts parsing | - | 0 | Not implemented |
+| Protocol adapters | `test_protocol_adapters.py` | 14 | DONE - A2A format, metadata, edge cases |
+| Protocol router | `test_protocol_router.py` | 22 | DONE - All 5 routing patterns, priority, errors |
+| AgentFacts parsing | `test_agentfacts_parser.py` | 32 | DONE - Parse, validate, aliases, edge cases |
+| @mention routing | `test_mention_extraction_and_routing.py` | 4 | Pending evaluation |
+| Framework adapters | `test_framework_adapters.py` | 3 | Pending evaluation |
 
-### Development Roadmap
+### Completed Work
 
-#### Priority 1: Enhance Protocol Adapters (Most Critical)
+#### Protocol Adapters (14 tests) - DONE
+- TestA2AMessageFormatting (4 tests) - role, content type, agent ID, non-text rejection
+- TestA2AMessageMetadata (4 tests) - conversation ID, parent ID, unique IDs
+- TestA2AErrorHandling (1 test) - exception handling
+- TestA2AEdgeCases (5 tests) - empty, special chars, unicode, long text, whitespace
 
-**test_protocol_adapters.py** (3 → 10 tests)
-- Add A2A message format validation
-- Add metadata handling tests
-- Add content type validation
-- Add error response formatting
-- Add edge cases (empty, null, special chars)
+#### Protocol Router (22 tests) - DONE
+- TestRegularMessageRouting (4 tests) - agent_logic routing, telemetry
+- TestAtPrefixRouting (4 tests) - @agent-id outgoing A2A
+- TestHashPrefixRouting (2 tests) - #registry:server MCP
+- TestSlashPrefixRouting (3 tests) - /command system commands
+- TestIncomingA2ARouting (3 tests) - FROM:/TO:/MESSAGE: format
+- TestRoutingPriority (3 tests) - priority order verification
+- TestRoutingErrorHandling (3 tests) - exceptions, non-text, conversation preservation
 
-#### Priority 2: Create AgentFacts Parser Tests (Missing)
+#### AgentFacts Parser (32 tests) - DONE
+- TestParseRequiredFields (5 tests) - agent_id validation
+- TestParseOptionalFields (5 tests) - name, description, expertise, endpoint, version
+- TestParseFieldAliases (6 tests) - agent_name, about_response, capabilities aliases
+- TestParseCompleteConfig (2 tests) - full config, unknown fields
+- TestParseErrorHandling (5 tests) - None, string, list, numeric, non-list expertise
+- TestParseEdgeCases (6 tests) - unicode, special chars, empty list, null, long text
+- TestValidateAgentFacts (3 tests) - warnings for incomplete facts
 
-**test_agentfacts_parser.py** (0 → 10 tests) - NEW FILE
-- JSON parsing with validation
-- Required vs optional fields
-- Type checking and coercion
-- Malformed data handling
-- Error messages with solutions
+### Remaining Work
 
-#### Priority 3: Enhance Router Logic
+#### Priority 1: Evaluate @mention Extraction Tests
 
-**test_protocol_router.py** (3 → 8 tests)
-- Edge cases (empty, whitespace, special chars)
-- Multiple prefix handling
-- Invalid format with helpful errors
-- Route priority testing
+**test_mention_extraction_and_routing.py** (4 tests → evaluate)
+- Review existing tests for quality standards
+- Add pattern extraction logic tests if needed
+- Add complex agent ID format tests
+- Add error handling tests
 
-#### Priority 4: Enhance Mention Extraction
+#### Priority 2: Evaluate Framework Adapters Tests
 
-**test_mention_extraction_and_routing.py** (4 → 10 tests)
-- Pattern extraction logic
-- Complex agent ID formats
-- Error handling with clear messages
-- Message parsing edge cases
-
-#### Priority 5: Enhance Framework Adapters
-
-**test_framework_adapters.py** (3 → 8 tests)
-- Configuration validation
-- Parameter type checking
-- Missing parameter handling with clear errors
-- Integration toggle tests
+**test_framework_adapters.py** (3 tests → evaluate)
+- Review existing tests for quality standards
+- Add configuration validation tests if needed
+- Add parameter type checking tests
+- Add missing parameter handling tests
 
 ### Success Metrics
 
