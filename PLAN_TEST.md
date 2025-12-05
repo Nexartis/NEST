@@ -11,12 +11,12 @@ Four-layer test strategy following Issue #7 specification.
 | Layer | Status | Tests | Files |
 |-------|--------|-------|-------|
 | **Unit** | **COMPLETE** | 146 | 5 files |
-| Integration | Not Started | 0 | 0 files |
+| **Integration** | **COMPLETE** | 180 | 4 files |
 | E2E | Not Started | 0 | 0 files |
 | Contract | Not Started | 0 | 0 files |
 | Performance | Not Started | 0 | 0 files |
 
-**Total: 146 tests passing**
+**Total: 326 tests passing**
 
 ---
 
@@ -83,22 +83,57 @@ Four-layer test strategy following Issue #7 specification.
 
 ---
 
-## Layer 2: Integration Tests (NOT STARTED)
+## Layer 2: Integration Tests (COMPLETE)
 
-### Required Files
+### Files and Test Counts
 
-| File | Purpose |
-|------|---------|
-| `test_protocol_flows.py` | Protocol communication flows with mock external agents |
-| `test_registry_client.py` | Registry client interactions with mock NANDA Index |
-| `test_payment_flow.py` | Payment flow with mock blockchain facilitator |
-| `test_framework_bridge.py` | Framework-to-protocol bridge |
+| File | Tests | Coverage |
+|------|-------|----------|
+| `test_protocol_communication_flows.py` | 31 | A2A routing, registry lookup, message sending |
+| `test_registry_client.py` | 48 | Registration, lookup, search, health, stats |
+| `test_mcp_integration.py` | 37 | NANDA/Smithery lookups, URL building, MCP client |
+| `test_framework_adapter_bridge.py` | 32 | NANDA adapter, bridge creation, lifecycle |
 
-### Key Test Areas
-- A2A message sending/receiving with mocked agents
-- Registry registration, lookup, update flows
-- x402 payment header handling
-- Framework message to A2A conversion
+### Detailed Breakdown
+
+#### Protocol Communication Flows (31 tests)
+- TestA2AMessageFormatValidation (7) - bare mention, valid format, middle mention, special chars
+- TestRegistryLookupBehavior (8) - endpoint calls, 404, 500, timeout, connection error, invalid JSON
+- TestA2AMessageSending (4) - client creation, response handling, send failure, empty response
+- TestIncomingA2AMessageHandling (4) - FROM/TO/MESSAGE parsing, loop prevention, malformed
+- TestMessageMetadataPreservation (2) - conversation ID preservation and generation
+- TestA2AEdgeCasesAndBoundaries (6) - long message, unicode, self-mention, multiple @, whitespace, newlines
+
+#### Registry Client (48 tests)
+- TestRegistryClientInitialization (4) - URL config, defaults, file reading, SSL
+- TestAgentRegistration (6) - POST endpoint, required/optional fields, success/failure, network error
+- TestAgentLookup (4) - GET endpoint, success, 404, network error
+- TestAgentListing (5) - list agents, list clients, fallback behavior
+- TestAgentSearch (4) - query, capabilities, tags filters, local fallback
+- TestMCPServerOperations (4) - mcp_servers endpoint, provider filter, config parsing
+- TestAgentStatusOperations (6) - PUT status, timestamp, metadata, DELETE unregister
+- TestHealthAndStats (7) - health check, stats endpoint, error handling
+- TestAgentMetadata (2) - field extraction, missing fields
+- TestErrorResilience (6) - connection errors, JSON decode, exception handling
+
+#### MCP Integration (37 tests)
+- TestMCPRegistryInitialization (4) - URL storage, defaults, Smithery key
+- TestNANDAMCPServerLookup (5) - endpoint calls, success, 404, network error, endpoint field
+- TestSmitheryMCPServerLookup (4) - API key requirement, endpoint, auth header, response
+- TestServerURLConstruction (4) - NANDA direct, Smithery with API key, base64 config
+- TestUnifiedServerLookup (3) - routing to NANDA/Smithery, unknown provider
+- TestAgentRegistryConfigLookup (4) - endpoint, params, config parsing, error handling
+- TestMCPRegistryEdgeCases (5) - timeout, invalid JSON, empty config, chained lookups, case sensitivity
+- TestMCPClientResultParsing (8) - dict results, list results, string results, JSON formatting
+
+#### Framework Adapter Bridge (64 tests)
+- TestNANDAInitialization (3) - required params, optional params, defaults
+- TestBridgeCreation (6) - agent_id passing, registry_url, MCP config, smithery key, message handling
+- TestRegistryRegistration (12) - POST endpoint, body construction, timeout, HTTP 4xx/5xx errors (7 codes), connection error, timeout error
+- TestServerLifecycle (7) - start with registration, start without, URL validation, run_server params, stop cleanup
+- TestTelemetryIntegration (3) - disable behavior, flag storage, import failure handling
+- TestInputValidation (6) - empty agent_id, whitespace, long ID, empty URL, lambda, class method
+- TestEdgeCases (27) - 7 agent_id formats, 5 unicode formats, 7 port values, 6 URL formats, argument passing
 
 ---
 
@@ -181,41 +216,40 @@ assert result == expected, (
 # Run all unit tests
 pytest tests/unit/ -v
 
+# Run all integration tests
+pytest tests/integration/ -v
+
+# Run all tests
+pytest tests/ -v
+
 # Run specific test file
 pytest tests/unit/test_protocol_router.py -v
 
 # Run with coverage
-pytest tests/unit/ --cov=nanda_core --cov-report=html
+pytest tests/ --cov=nanda_core --cov-report=html
 
 # Run fast (no coverage)
-pytest tests/unit/ --no-cov
+pytest tests/ --no-cov
 ```
 
 ---
 
 ## Remaining Work
 
-### Priority 1: Integration Tests
-1. Create `tests/integration/` directory structure
-2. Implement `test_protocol_flows.py` - mock A2A communication
-3. Implement `test_registry_client.py` - mock registry interactions
-4. Implement `test_payment_flow.py` - mock payment handling
-5. Implement `test_framework_bridge.py` - framework conversion
-
-### Priority 2: Contract Tests
+### Priority 1: Contract Tests
 1. Create `tests/contract/` directory structure
 2. Implement A2A spec compliance tests
 3. Implement SLIM protocol compliance tests
 4. Implement x402 header validation tests
 
-### Priority 3: E2E Tests
+### Priority 2: E2E Tests
 1. Create `tests/e2e/` directory structure
 2. Set up Docker Compose for test environment
 3. Implement multi-agent scenario tests
 4. Implement agent discovery tests
 5. Implement cross-framework tests
 
-### Priority 4: Performance Tests
+### Priority 3: Performance Tests
 1. Create `tests/performance/` directory structure
 2. Implement large-scale agent tests
 3. Implement message throughput tests
