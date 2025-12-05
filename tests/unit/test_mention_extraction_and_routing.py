@@ -103,8 +103,15 @@ class TestMentionUnicodeFormats:
         ("@\u4e2d\u6587agent hello", "Chinese characters in agent ID"),
         ("@agent\u65e5\u672c test", "Japanese characters in agent ID"),
         ("@\u0430\u0433\u0435\u043d\u0442 query", "Cyrillic characters in agent ID"),
+        ("@\uc5d0\uc774\uc804\ud2b8 test", "Korean Hangul in agent ID"),
+        ("@\u0648\u0643\u064a\u0644 test", "Arabic RTL script in agent ID"),
+        ("@\u05e1\u05d5\u05db\u05df test", "Hebrew RTL script in agent ID"),
+        ("@\u0e15\u0e31\u0e27\u0e41\u0e17\u0e19 test", "Thai script in agent ID"),
+        ("@\u090f\u091c\u0947\u0902\u091f test", "Hindi Devanagari in agent ID"),
         ("@agent\u00e9\u00e8 test", "French accents in agent ID"),
         ("@\u03b1\u03b2\u03b3 test", "Greek letters in agent ID"),
+        ("@agent\u060c\u061b test", "Arabic punctuation in agent ID"),
+        ("@agent\u300c\u540d\u300d test", "Japanese brackets in agent ID"),
     ])
     def test_handles_unicode_agent_id_gracefully(self, bridge, sample_text_message, message, description):
         """

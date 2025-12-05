@@ -655,19 +655,34 @@ class TestA2AEdgeCasesAndBoundaries:
             "Fix: Remove or increase limits"
         )
 
-    def test_unicode_in_message_preserved(self, bridge_without_registry, sample_text_message):
+    @pytest.mark.parametrize("message,description", [
+        ("@target-agent 你好", "Chinese characters"),
+        ("@target-agent こんにちは", "Japanese characters"),
+        ("@target-agent Привет", "Cyrillic characters"),
+        ("@target-agent 안녕하세요", "Korean Hangul"),
+        ("@target-agent مرحبا", "Arabic RTL script"),
+        ("@target-agent שלום", "Hebrew RTL script"),
+        ("@target-agent สวัสดี", "Thai script"),
+        ("@target-agent नमस्ते", "Hindi Devanagari"),
+        ("@target-agent Bonjour café", "French accents"),
+        ("@target-agent Γεια σου", "Greek letters"),
+        ("@target-agent Hello 🎉🤖", "Emoji"),
+        ("@target-agent test،message", "Arabic comma punctuation"),
+    ])
+    def test_unicode_in_message_preserved(self, bridge_without_registry, sample_text_message, message, description):
         """
-        Given: "@target-agent 你好 こんにちは 🎉"
+        Given: Message with unicode characters ({description})
         When: Processing
         Then: Unicode characters preserved (not crash)
         """
         response = bridge_without_registry.handle_message(
-            sample_text_message("@target-agent 你好 こんにちは")
+            sample_text_message(message)
         )
 
         assert isinstance(response, Message), (
-            "Expected Message for unicode input. Got crash. "
-            "Fix: Ensure UTF-8 encoding throughout"
+            f"Expected Message for {description}. Got crash. "
+            f"Cause: Unicode encoding error. "
+            f"Fix: Ensure UTF-8 encoding throughout"
         )
 
     def test_self_mention_handled(self, bridge_without_registry, sample_text_message):

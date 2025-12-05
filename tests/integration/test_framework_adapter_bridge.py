@@ -1010,8 +1010,15 @@ class TestEdgeCases:
         ("代理", "Chinese characters"),
         ("エージェント", "Japanese characters"),
         ("агент", "Cyrillic characters"),
+        ("에이전트", "Korean Hangul"),
+        ("وكيل", "Arabic RTL script"),
+        ("סוכן", "Hebrew RTL script"),
+        ("ตัวแทน", "Thai script"),
+        ("एजेंट", "Hindi Devanagari"),
         ("agent-日本語", "Mixed ASCII and Japanese"),
         ("café-agent", "Accented characters"),
+        ("agent،test", "Arabic comma punctuation"),
+        ("agent「名」", "Japanese brackets"),
     ])
     def test_accepts_unicode_agent_ids(self, agent_id, description, sample_agent_logic):
         """

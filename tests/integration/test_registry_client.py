@@ -906,9 +906,17 @@ class TestAgentIDEdgeCases:
         ("代理", "Chinese characters"),
         ("エージェント", "Japanese characters"),
         ("агент", "Cyrillic characters"),
+        ("에이전트", "Korean Hangul"),
+        ("وكيل", "Arabic RTL script"),
+        ("סוכן", "Hebrew RTL script"),
+        ("ตัวแทน", "Thai script"),
+        ("एजेंट", "Hindi Devanagari"),
         ("agent-日本語", "Mixed ASCII and Japanese"),
         ("café-agent", "Accented characters"),
         ("🤖-bot", "Emoji in ID"),
+        ("agent،test", "Arabic comma (،)"),
+        ("agent「名前」", "Japanese brackets"),
+        ("test—agent", "Em dash punctuation"),
     ])
     def test_register_accepts_unicode_agent_id(
         self, client_with_mock_session, mock_http_response, agent_id, description

@@ -434,17 +434,31 @@ class TestEdgeCases:
             f"Fix: Don't strip agent_id"
         )
 
-    def test_unicode_in_agent_id(self, mock_agent_logic):
+    @pytest.mark.parametrize("agent_id,description", [
+        ("agent-中文", "Chinese characters"),
+        ("agent-日本語", "Japanese characters"),
+        ("agent-агент", "Cyrillic characters"),
+        ("에이전트", "Korean Hangul"),
+        ("وكيل", "Arabic RTL script"),
+        ("סוכן", "Hebrew RTL script"),
+        ("ตัวแทน", "Thai script"),
+        ("एजेंट", "Hindi Devanagari"),
+        ("café-agent", "French accents"),
+        ("αβγ-agent", "Greek letters"),
+        ("🤖-bot", "Emoji"),
+        ("agent،test", "Arabic comma punctuation"),
+    ])
+    def test_unicode_in_agent_id(self, mock_agent_logic, agent_id, description):
         """
-        Given: agent_id with unicode "agent-\u4e2d\u6587"
+        Given: agent_id with unicode ({description})
         When: Creating bridge
         Then: Unicode is preserved
         """
-        unicode_id = "agent-\u4e2d\u6587"
-        bridge = SimpleAgentBridge(agent_id=unicode_id, agent_logic=mock_agent_logic)
+        bridge = SimpleAgentBridge(agent_id=agent_id, agent_logic=mock_agent_logic)
 
-        assert bridge.agent_id == unicode_id, (
-            f"Expected '{unicode_id}', got '{bridge.agent_id}'. "
+        assert bridge.agent_id == agent_id, (
+            f"Unicode not preserved for {description}. "
+            f"Expected '{agent_id}', got '{bridge.agent_id}'. "
             f"Cause: Unicode not handled correctly. "
             f"Fix: Ensure UTF-8 support in agent_id storage"
         )

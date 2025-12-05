@@ -582,18 +582,33 @@ class TestParseErrorHandling:
 class TestParseEdgeCases:
     """Tests for edge cases and boundary conditions."""
 
-    def test_preserves_unicode_in_name(self):
+    @pytest.mark.parametrize("name,description", [
+        ("中文代理", "Chinese characters"),
+        ("エージェント", "Japanese characters"),
+        ("агент", "Cyrillic characters"),
+        ("에이전트", "Korean Hangul"),
+        ("وكيل", "Arabic RTL script"),
+        ("סוכן", "Hebrew RTL script"),
+        ("ตัวแทน", "Thai script"),
+        ("एजेंट", "Hindi Devanagari"),
+        ("café-agent", "French accents"),
+        ("αβγ-agent", "Greek letters"),
+        ("🤖 Bot", "Emoji"),
+        ("agent،name", "Arabic comma punctuation"),
+    ])
+    def test_preserves_unicode_in_name(self, name, description):
         """
-        Given: Name with unicode characters
+        Given: Name with unicode characters ({description})
         When: Parsing
         Then: Unicode preserved correctly
         """
-        data = {"agent_id": "test", "name": "\u4e2d\u6587\u4ee3\u7406"}  # Chinese
+        data = {"agent_id": "test", "name": name}
 
         facts = parse_agent_facts(data)
 
-        assert facts.name == "\u4e2d\u6587\u4ee3\u7406", (
-            f"Unicode not preserved. Got: '{facts.name}'. "
+        assert facts.name == name, (
+            f"Unicode not preserved for {description}. "
+            f"Expected: '{name}', Got: '{facts.name}'. "
             f"Cause: Encoding issue. "
             f"Fix: Ensure UTF-8 handling throughout"
         )
