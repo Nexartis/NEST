@@ -1,16 +1,16 @@
 """
-Unit tests for A2A and SLIM protocol adapters.
+Unit tests for A2A protocol adapters.
 
-Tests message formatting and protocol compliance for the SimpleAgentBridge's
-_create_response() method and A2A Message structure.
+Tests message formatting and protocol compliance for SimpleAgentBridge.
 
 Covers:
-- A2A Message format compliance (role, content, metadata)
-- TextContent wrapping and formatting
-- Conversation ID preservation
+- A2A Message format (role, content, metadata)
+- Conversation ID handling
 - Parent message ID linking
-- Agent ID prefix formatting
-- Edge cases (empty content, special characters, null values)
+- Error response formatting
+- Edge cases (empty, special chars, unicode, long text)
+
+Note: SLIM protocol tests will be added when SLIM support is implemented.
 """
 
 import pytest
@@ -26,396 +26,285 @@ except ImportError as e:
     IMPORT_SUCCESS = False
     IMPORT_ERROR = str(e)
 
+# Apply markers to all tests in this module
+pytestmark = [
+    pytest.mark.unit,
+    pytest.mark.skipif(not IMPORT_SUCCESS, reason=f"Import failed: {IMPORT_ERROR}")
+]
 
-@pytest.mark.unit
-@pytest.mark.skipif(not IMPORT_SUCCESS, reason=f"Import failed: {IMPORT_ERROR}")
+
+@pytest.fixture
+def bridge(mock_agent_logic):
+    """Create a SimpleAgentBridge instance for testing."""
+    return SimpleAgentBridge(agent_id="test-agent", agent_logic=mock_agent_logic)
+
+
 class TestA2AMessageFormatting:
-    """
-    Tests for A2A protocol message formatting compliance.
+    """Tests for A2A message formatting compliance."""
 
-    Validates that responses conform to A2A protocol requirements:
-    - Correct message role (AGENT)
-    - TextContent wrapping
-    - Metadata preservation
-    """
-
-    def test_response_has_agent_role(self, mock_agent_logic, sample_text_message):
+    def test_response_has_agent_role(self, bridge, sample_text_message):
         """
-        Test that all responses have MessageRole.AGENT.
-
         Given: A message from a user
-        When: The bridge processes it and creates a response
-        Then: The response message has role=MessageRole.AGENT
-
-        Why this matters:
-        A2A protocol requires proper role assignment for message routing.
-        AGENT role indicates the message is from an agent, not a user.
+        When: The bridge processes it
+        Then: Response has role=MessageRole.AGENT
         """
-        # Arrange
-        bridge = SimpleAgentBridge(
-            agent_id="test-agent",
-            agent_logic=mock_agent_logic
-        )
+        response = bridge.handle_message(sample_text_message("Hello"))
 
-        # Act
-        msg = sample_text_message("Hello")
-        response = bridge.handle_message(msg)
-
-        # Assert
         assert response.role == MessageRole.AGENT, (
-            f"Response must have AGENT role for A2A protocol compliance. "
-            f"Expected MessageRole.AGENT, got {response.role}. "
-            f"Possible causes: (1) Role assignment logic changed in _create_response(), "
-            f"(2) Message class initialization error. "
-            f"Check _create_response() in agent_bridge.py:406"
+            f"Expected AGENT role, got {response.role}. "
+            f"Cause: Role assignment changed in _create_response(). "
+            f"Fix: Check _create_response() in agent_bridge.py"
         )
 
-    def test_response_content_is_text_content_type(self, mock_agent_logic, sample_text_message):
+    def test_response_uses_text_content(self, bridge, sample_text_message):
         """
-        Test that response content is wrapped in TextContent.
-
         Given: A processed message
-        When: Creating the response
-        Then: Response content is a TextContent instance
-
-        Why this matters:
-        A2A protocol requires specific content type wrapping for proper
-        serialization and deserialization across the network.
+        When: Response is created
+        Then: Content is a TextContent instance
         """
-        # Arrange
-        bridge = SimpleAgentBridge(
-            agent_id="test-agent",
-            agent_logic=mock_agent_logic
-        )
+        response = bridge.handle_message(sample_text_message("Test"))
 
-        # Act
-        msg = sample_text_message("Test message")
-        response = bridge.handle_message(msg)
-
-        # Assert
         assert isinstance(response.content, TextContent), (
-            f"Response content must be TextContent type for A2A compliance. "
             f"Expected TextContent, got {type(response.content).__name__}. "
-            f"Possible causes: (1) Content wrapping changed in _create_response(), "
-            f"(2) python_a2a library version mismatch. "
-            f"Solution: Verify TextContent import and wrapping in agent_bridge.py:410"
+            f"Cause: Content wrapping changed or python_a2a version mismatch. "
+            f"Fix: Check TextContent wrapping in _create_response()"
         )
 
     def test_response_includes_agent_id_prefix(self, mock_agent_logic, sample_text_message):
         """
-        Test that response text includes agent ID as prefix.
-
-        Given: An agent with ID "my-agent"
-        When: Creating a response
-        Then: Response text starts with "[my-agent]"
-
-        Why this matters:
-        Agent ID prefix helps identify the source of responses in
-        multi-agent conversations and debugging scenarios.
+        Given: An agent with ID "my-test-agent"
+        When: Response is created
+        Then: Response text starts with "[my-test-agent]"
         """
-        # Arrange
         agent_id = "my-test-agent"
-        bridge = SimpleAgentBridge(
-            agent_id=agent_id,
-            agent_logic=mock_agent_logic
-        )
+        bridge = SimpleAgentBridge(agent_id=agent_id, agent_logic=mock_agent_logic)
 
-        # Act
-        msg = sample_text_message("Hello")
-        response = bridge.handle_message(msg)
+        response = bridge.handle_message(sample_text_message("Hello"))
 
-        # Assert
-        response_text = response.content.text
         expected_prefix = f"[{agent_id}]"
-        assert response_text.startswith(expected_prefix), (
-            f"Response text must include agent ID prefix for identification. "
-            f"Expected text to start with '{expected_prefix}', got '{response_text[:50]}...'. "
-            f"Possible causes: (1) Agent ID formatting changed, "
-            f"(2) Text concatenation logic modified. "
-            f"Check text formatting in agent_bridge.py:410"
+        assert response.content.text.startswith(expected_prefix), (
+            f"Expected prefix '{expected_prefix}', got '{response.content.text[:50]}'. "
+            f"Cause: Agent ID formatting changed. "
+            f"Fix: Check text formatting in _create_response()"
+        )
+
+    def test_rejects_non_text_content(self, bridge):
+        """
+        Given: A message with non-TextContent
+        When: Bridge processes it
+        Then: Response indicates text-only support
+        """
+        mock_msg = Mock()
+        mock_msg.content = Mock()
+        mock_msg.content.text = None
+        mock_msg.conversation_id = "conv-123"
+        mock_msg.message_id = "msg-123"
+
+        response = bridge.handle_message(mock_msg)
+
+        response_lower = response.content.text.lower()
+        assert "text" in response_lower or "supported" in response_lower, (
+            f"Expected error about text support, got: '{response.content.text}'. "
+            f"Fix: Check content type validation in handle_message()"
         )
 
 
-@pytest.mark.unit
-@pytest.mark.skipif(not IMPORT_SUCCESS, reason=f"Import failed: {IMPORT_ERROR}")
-class TestMessageMetadata:
-    """
-    Tests for message metadata handling.
+class TestA2AMessageMetadata:
+    """Tests for A2A message metadata handling."""
 
-    Validates conversation tracking and message threading:
-    - Conversation ID preservation
-    - Parent message ID linking
-    - Message ID generation
-    """
-
-    def test_conversation_id_is_preserved(self, mock_agent_logic, sample_text_message):
+    def test_preserves_conversation_id(self, bridge, sample_text_message):
         """
-        Test that conversation ID from request is preserved in response.
-
-        Given: A message with conversation_id="conv-123"
+        Given: A message with conversation_id="conv-test-123"
         When: Processing the message
         Then: Response has the same conversation_id
-
-        Why this matters:
-        Conversation ID enables message threading and context tracking
-        across multiple exchanges between agents and users.
         """
-        # Arrange
         conversation_id = "conv-test-123"
-        bridge = SimpleAgentBridge(
-            agent_id="test-agent",
-            agent_logic=mock_agent_logic
-        )
-
-        # Act
         msg = sample_text_message("Hello", conversation_id=conversation_id)
+
         response = bridge.handle_message(msg)
 
-        # Assert
         assert response.conversation_id == conversation_id, (
-            f"Conversation ID must be preserved for message threading. "
             f"Expected '{conversation_id}', got '{response.conversation_id}'. "
-            f"Possible causes: (1) Conversation ID not passed to _create_response(), "
-            f"(2) Message initialization missing conversation_id parameter. "
-            f"Check handle_message() and _create_response() in agent_bridge.py"
+            f"Cause: Conversation ID not passed to _create_response(). "
+            f"Fix: Check handle_message() conversation_id handling"
         )
 
-    def test_parent_message_id_links_to_original(self, mock_agent_logic, sample_text_message):
+    def test_auto_generates_conversation_id(self, bridge, sample_text_message):
         """
-        Test that response parent_message_id links to original message.
-
-        Given: An incoming message with message_id="msg-456"
-        When: Creating a response
-        Then: Response parent_message_id equals "msg-456"
-
-        Why this matters:
-        Parent message ID creates a thread structure, enabling:
-        - Conversation history reconstruction
-        - Reply tracking
-        - Context understanding
+        Given: A message without conversation_id
+        When: Processing the message
+        Then: Response has a generated conversation_id
         """
-        # Arrange
-        bridge = SimpleAgentBridge(
-            agent_id="test-agent",
-            agent_logic=mock_agent_logic
-        )
+        msg = sample_text_message("Hello", conversation_id=None)
 
-        # Act
-        msg = sample_text_message("Test")
-        original_message_id = msg.message_id
         response = bridge.handle_message(msg)
 
-        # Assert
-        assert response.parent_message_id == original_message_id, (
-            f"Response must link to original message for threading. "
-            f"Expected parent_message_id='{original_message_id}', "
-            f"got '{response.parent_message_id}'. "
-            f"Possible causes: (1) parent_message_id not set in _create_response(), "
-            f"(2) Wrong message object passed. "
-            f"Check _create_response() parameter in agent_bridge.py:411"
+        assert response.conversation_id, (
+            f"Expected auto-generated conversation ID, got None/empty. "
+            f"Cause: UUID generation logic removed. "
+            f"Fix: Check conversation_id assignment in handle_message()"
         )
 
-    def test_response_has_unique_message_id(self, mock_agent_logic, sample_text_message):
+    def test_links_parent_message_id(self, bridge, sample_text_message):
         """
-        Test that each response gets a unique message ID.
+        Given: A message with a specific message_id
+        When: Creating a response
+        Then: Response parent_message_id equals original message_id
+        """
+        msg = sample_text_message("Test")
+        original_id = msg.message_id
 
-        Given: Two messages processed
-        When: Creating responses for each
+        response = bridge.handle_message(msg)
+
+        assert response.parent_message_id == original_id, (
+            f"Expected parent_message_id='{original_id}', got '{response.parent_message_id}'. "
+            f"Cause: parent_message_id not set in _create_response(). "
+            f"Fix: Check _create_response() parent_message_id parameter"
+        )
+
+    def test_generates_unique_message_ids(self, bridge, sample_text_message):
+        """
+        Given: Two messages processed sequentially
+        When: Creating responses
         Then: Each response has a different message_id
-
-        Why this matters:
-        Unique message IDs are required for:
-        - Message deduplication
-        - Thread structure
-        - Message tracking and debugging
         """
-        # Arrange
-        bridge = SimpleAgentBridge(
-            agent_id="test-agent",
-            agent_logic=mock_agent_logic
-        )
+        response1 = bridge.handle_message(sample_text_message("First"))
+        response2 = bridge.handle_message(sample_text_message("Second"))
 
-        # Act
-        msg1 = sample_text_message("First message")
-        msg2 = sample_text_message("Second message")
-        response1 = bridge.handle_message(msg1)
-        response2 = bridge.handle_message(msg2)
-
-        # Assert
         assert response1.message_id != response2.message_id, (
-            f"Each response must have a unique message_id. "
-            f"Both responses have message_id='{response1.message_id}'. "
-            f"Possible causes: (1) Message ID not auto-generated by python_a2a, "
-            f"(2) Message reuse instead of creating new instances. "
-            f"Solution: Verify Message() creates new IDs in python_a2a library"
+            f"Both responses have same id='{response1.message_id}'. "
+            f"Cause: Message ID not auto-generated. "
+            f"Fix: Check Message() initialization in python_a2a"
         )
-
-        # Also verify IDs are not None or empty
-        assert response1.message_id, (
-            f"Response message_id cannot be None or empty. "
-            f"Got: '{response1.message_id}'. "
-            f"Check Message initialization in python_a2a library"
-        )
+        assert response1.message_id, "Message ID cannot be None or empty"
 
 
-@pytest.mark.unit
-@pytest.mark.skipif(not IMPORT_SUCCESS, reason=f"Import failed: {IMPORT_ERROR}")
-class TestEdgeCases:
-    """
-    Tests for edge cases and error scenarios.
+class TestA2AErrorHandling:
+    """Tests for error response formatting."""
 
-    Validates handling of:
-    - Empty content
-    - Special characters
-    - Very long messages
-    - Null/None values (where applicable)
-    """
-
-    def test_empty_response_text_is_handled(self, sample_text_message):
+    def test_catches_agent_logic_exception(self, sample_text_message):
         """
-        Test that empty response text is properly formatted.
+        Given: Agent logic that raises an exception
+        When: Processing a message
+        Then: Response contains error message (not stack trace)
+        """
+        failing_logic = Mock(side_effect=Exception("Database connection failed"))
+        bridge = SimpleAgentBridge(agent_id="test-agent", agent_logic=failing_logic)
 
+        response = bridge.handle_message(sample_text_message("Hello"))
+
+        assert isinstance(response, Message), (
+            f"Expected Message, got {type(response).__name__}. "
+            f"Fix: Check exception handling in handle_message()"
+        )
+        assert "error" in response.content.text.lower(), (
+            f"Expected error indication, got: '{response.content.text}'. "
+            f"Fix: Check error formatting in handle_message()"
+        )
+
+
+class TestA2AEdgeCases:
+    """Tests for edge cases and boundary conditions."""
+
+    def test_handles_empty_response(self, sample_text_message):
+        """
         Given: Agent logic returns empty string
         When: Creating the response
-        Then: Response is created with agent ID prefix only
-
-        Why this matters:
-        Empty responses should not cause errors and should maintain
-        proper message structure for protocol compliance.
+        Then: Response has agent ID prefix only
         """
-        # Arrange
-        empty_logic = Mock(return_value="")
-        bridge = SimpleAgentBridge(
-            agent_id="test-agent",
-            agent_logic=empty_logic
-        )
+        bridge = SimpleAgentBridge(agent_id="test-agent", agent_logic=Mock(return_value=""))
 
-        # Act
-        msg = sample_text_message("Hello")
-        response = bridge.handle_message(msg)
+        response = bridge.handle_message(sample_text_message("Hello"))
 
-        # Assert
         assert isinstance(response, Message), (
-            f"Empty response should still return valid Message object. "
-            f"Got type: {type(response).__name__}. "
-            f"Possible causes: (1) Error handling prevents message creation, "
-            f"(2) Validation rejects empty content. "
-            f"Check _create_response() for empty string handling"
+            f"Expected Message, got {type(response).__name__}. "
+            f"Fix: Check empty string handling in _create_response()"
         )
-
-        # Verify it has the agent prefix even if content is empty
         assert response.content.text.startswith("[test-agent]"), (
-            f"Even empty responses must include agent ID prefix. "
-            f"Got: '{response.content.text}'. "
-            f"Check text formatting in _create_response()"
+            f"Expected agent ID prefix, got: '{response.content.text}'. "
+            f"Fix: Check text formatting in _create_response()"
         )
 
-    def test_special_characters_in_response(self, sample_text_message):
+    def test_preserves_special_characters(self, sample_text_message):
         """
-        Test that special characters are preserved in responses.
-
-        Given: Agent logic returns text with special characters
+        Given: Agent returns text with special characters
         When: Creating the response
-        Then: Special characters are preserved in response text
-
-        Why this matters:
-        Agents may need to return code, JSON, or formatted text
-        containing special characters that must not be escaped or lost.
+        Then: Special characters are preserved
         """
-        # Arrange
-        special_text = "Hello! @user #tag $100 <xml> & \"quotes\" 'single' \n\t"
-        special_logic = Mock(return_value=special_text)
+        special_text = "Hello! @user #tag $100 <xml> & \"quotes\" 'single'"
         bridge = SimpleAgentBridge(
             agent_id="test-agent",
-            agent_logic=special_logic
+            agent_logic=Mock(return_value=special_text)
         )
 
-        # Act
-        msg = sample_text_message("Test")
-        response = bridge.handle_message(msg)
+        response = bridge.handle_message(sample_text_message("Test"))
 
-        # Assert
-        response_text = response.content.text
-        assert special_text in response_text, (
-            f"Special characters must be preserved in response text. "
-            f"Expected substring: '{special_text}' "
-            f"Got: '{response_text}'. "
-            f"Possible causes: (1) Text sanitization removing characters, "
-            f"(2) Encoding issues. "
-            f"Solution: Verify no text transformation occurs in _create_response()"
+        assert special_text in response.content.text, (
+            f"Expected '{special_text}' in response, got: '{response.content.text}'. "
+            f"Cause: Text sanitization or encoding issue. "
+            f"Fix: Check _create_response() for text transformation"
         )
 
-    def test_very_long_response_text(self, sample_text_message):
+    def test_preserves_unicode_characters(self, sample_text_message):
         """
-        Test that very long responses are handled correctly.
-
-        Given: Agent logic returns a 10KB response
-        When: Creating the response message
-        Then: Full text is preserved in response
-
-        Why this matters:
-        Agents may need to return large documents, code files, or
-        detailed explanations without truncation.
+        Given: Agent returns text with unicode characters
+        When: Creating the response
+        Then: Unicode characters are preserved
         """
-        # Arrange
-        long_text = "A" * 10000  # 10KB of text
-        long_logic = Mock(return_value=long_text)
+        # Actual unicode characters
+        unicode_text = "Chinese: \u4f60\u597d Japanese: \u3053\u3093\u306b\u3061\u306f Arabic: \u0645\u0631\u062d\u0628\u0627"
         bridge = SimpleAgentBridge(
             agent_id="test-agent",
-            agent_logic=long_logic
+            agent_logic=Mock(return_value=unicode_text)
         )
 
-        # Act
-        msg = sample_text_message("Generate long text")
-        response = bridge.handle_message(msg)
+        response = bridge.handle_message(sample_text_message("Greet"))
 
-        # Assert
-        response_text = response.content.text
-        # Check that at least 9900 characters are present (allowing for prefix)
-        assert len(response_text) >= 9900, (
-            f"Long responses must not be truncated. "
-            f"Expected at least 9900 chars, got {len(response_text)}. "
-            f"Possible causes: (1) Text truncation in _create_response(), "
-            f"(2) Message size limits in python_a2a. "
-            f"Solution: Check for text length limits in message creation"
+        assert unicode_text in response.content.text, (
+            f"Unicode not preserved. Expected: '{unicode_text}'. "
+            f"Got: '{response.content.text}'. "
+            f"Fix: Ensure UTF-8 handling in _create_response()"
         )
 
-    def test_newlines_and_formatting_preserved(self, sample_text_message):
+    def test_handles_long_response(self, sample_text_message):
         """
-        Test that newlines and whitespace formatting is preserved.
+        Given: Agent returns 10KB of text
+        When: Creating the response
+        Then: Full text is preserved
+        """
+        long_text = "A" * 10000
+        bridge = SimpleAgentBridge(
+            agent_id="test-agent",
+            agent_logic=Mock(return_value=long_text)
+        )
 
+        response = bridge.handle_message(sample_text_message("Generate"))
+
+        assert len(response.content.text) >= 9900, (
+            f"Expected 9900+ chars, got {len(response.content.text)}. "
+            f"Cause: Text truncation. "
+            f"Fix: Check for length limits in message creation"
+        )
+
+    def test_preserves_whitespace_formatting(self, sample_text_message):
+        """
         Given: Agent returns multi-line formatted text
         When: Creating the response
-        Then: Line breaks and indentation are preserved
-
-        Why this matters:
-        Code snippets, structured data, and formatted text rely on
-        whitespace preservation for readability and correctness.
+        Then: Newlines and indentation are preserved
         """
-        # Arrange
         formatted_text = "Line 1\n  Indented line 2\n\nLine 4 after blank"
-        formatted_logic = Mock(return_value=formatted_text)
         bridge = SimpleAgentBridge(
             agent_id="test-agent",
-            agent_logic=formatted_logic
+            agent_logic=Mock(return_value=formatted_text)
         )
 
-        # Act
-        msg = sample_text_message("Format test")
-        response = bridge.handle_message(msg)
+        response = bridge.handle_message(sample_text_message("Format"))
 
-        # Assert
-        response_text = response.content.text
-        assert "\n" in response_text, (
-            f"Newlines must be preserved in response text. "
-            f"Expected newlines in text, got: '{response_text}'. "
-            f"Possible causes: (1) Newline stripping in text processing, "
-            f"(2) Text normalization removing whitespace. "
-            f"Check _create_response() for text transformation"
+        assert "\n" in response.content.text, (
+            f"Newlines not preserved. Got: '{response.content.text}'. "
+            f"Fix: Check for text normalization"
         )
-
-        assert "  Indented" in response_text, (
-            f"Indentation must be preserved in response text. "
-            f"Expected '  Indented', got: '{response_text}'. "
-            f"Solution: Ensure no whitespace normalization in message creation"
+        assert "  Indented" in response.content.text, (
+            f"Indentation not preserved. "
+            f"Fix: Ensure no whitespace normalization"
         )
