@@ -515,3 +515,204 @@ git rm tests/test_generic_agent_patterns.py
 **PR #24 Decision:**
 - Distribute all 20 tests into appropriate Issue #7 categories
 - No tests lost, just reorganized by purpose not by PR
+
+---
+
+## PHASE 2: Unit Test Development (In Progress)
+
+### Objective
+Build high-quality, developer-friendly, well-documented unit tests for all 5 core areas.
+
+### Test Quality Requirements
+
+**CRITICAL: Every test must follow these standards:**
+
+1. **Well Documented**
+   - Clear docstring explaining what is tested and why
+   - Include Given-When-Then format
+   - Explain business/technical importance
+
+2. **Developer Friendly**
+   - Descriptive test names: `test_[scenario]_[expected_outcome]`
+   - Clear variable names
+   - Logical test organization
+   - Easy to understand flow
+
+3. **Provide Diagnostic Information**
+   - When assertions fail, include helpful error messages
+   - Suggest possible causes
+   - Provide solutions or next steps
+   - Reference relevant documentation/code locations
+
+4. **No Emojis in Test Code**
+   - Keep test output professional
+   - Use clear text messages instead
+
+5. **Easy to Read Messages**
+   - Use descriptive assertion messages
+   - Format: "Expected X, got Y" or "Should Z, but..."
+   - Include context (what was being tested)
+
+### Test Template (Standard Format)
+
+```python
+@pytest.mark.unit
+class TestComponentName:
+    """
+    Tests for [component description].
+    
+    Covers:
+    - [Feature 1]
+    - [Feature 2]
+    - Edge cases and error handling
+    """
+
+    def test_valid_input_produces_expected_output(self):
+        """
+        Test that valid input is processed correctly.
+        
+        Given: A valid input message with required fields
+        When: The component processes the message
+        Then: Output matches expected format and content
+        
+        Why this matters:
+        Valid input is the primary use case and must work reliably
+        for the system to function.
+        """
+        # Arrange: Set up test data
+        input_data = create_valid_input()
+        expected_output = "expected result"
+        
+        # Act: Execute the function
+        result = process_input(input_data)
+        
+        # Assert: Verify expectations with helpful messages
+        assert result == expected_output, (
+            f"Processing failed. Expected '{expected_output}', got '{result}'. "
+            f"Possible causes: (1) Input validation changed, "
+            f"(2) Output formatter modified. "
+            f"Check process_input() in module.py:line_number"
+        )
+    
+    def test_missing_required_field_raises_clear_error(self):
+        """
+        Test that missing required fields produce helpful error messages.
+        
+        Given: Input missing a required field
+        When: The component attempts to process it
+        Then: ValueError is raised with clear message indicating which field
+        
+        Why this matters:
+        Clear error messages help developers debug issues quickly.
+        """
+        # Arrange
+        incomplete_input = {"field_a": "value"}  # Missing field_b
+        
+        # Act & Assert
+        with pytest.raises(ValueError) as exc_info:
+            process_input(incomplete_input)
+        
+        error_message = str(exc_info.value)
+        assert "field_b" in error_message.lower(), (
+            f"Error message should indicate missing field. "
+            f"Got: '{error_message}'. "
+            f"Solution: Update error handling to mention specific missing fields."
+        )
+```
+
+### Current Status (22 tests total)
+
+| Area | File | Tests | Status |
+|------|------|-------|--------|
+| Framework adapters | `test_framework_adapters.py` | 3 | Basic, needs expansion |
+| Protocol router | `test_protocol_router.py` | 3 | Basic, needs edge cases |
+| Protocol adapters | `test_protocol_adapters.py` | 3 | Basic, needs A2A/SLIM tests |
+| @mention routing | `test_mention_extraction_and_routing.py` | 4 | Basic, needs extraction logic |
+| AgentFacts parsing | - | 0 | Not implemented |
+
+### Development Roadmap
+
+#### Priority 1: Enhance Protocol Adapters (Most Critical)
+
+**test_protocol_adapters.py** (3 → 10 tests)
+- Add A2A message format validation
+- Add metadata handling tests
+- Add content type validation
+- Add error response formatting
+- Add edge cases (empty, null, special chars)
+
+#### Priority 2: Create AgentFacts Parser Tests (Missing)
+
+**test_agentfacts_parser.py** (0 → 10 tests) - NEW FILE
+- JSON parsing with validation
+- Required vs optional fields
+- Type checking and coercion
+- Malformed data handling
+- Error messages with solutions
+
+#### Priority 3: Enhance Router Logic
+
+**test_protocol_router.py** (3 → 8 tests)
+- Edge cases (empty, whitespace, special chars)
+- Multiple prefix handling
+- Invalid format with helpful errors
+- Route priority testing
+
+#### Priority 4: Enhance Mention Extraction
+
+**test_mention_extraction_and_routing.py** (4 → 10 tests)
+- Pattern extraction logic
+- Complex agent ID formats
+- Error handling with clear messages
+- Message parsing edge cases
+
+#### Priority 5: Enhance Framework Adapters
+
+**test_framework_adapters.py** (3 → 8 tests)
+- Configuration validation
+- Parameter type checking
+- Missing parameter handling with clear errors
+- Integration toggle tests
+
+### Success Metrics
+
+- >80% code coverage for tested components
+- All tests run in <2 seconds total
+- Zero flaky tests
+- All assertion failures include diagnostic information
+- CI/CD passes consistently
+- Each component has happy path + error cases + edge cases
+
+### Error Message Quality Examples
+
+**Bad:**
+```python
+assert result.status == "success"  # No message
+```
+
+**Good:**
+```python
+assert result.status == "success", (
+    f"Processing failed with status '{result.status}'. "
+    f"Expected 'success'. "
+    f"Possible causes: (1) Validation error, (2) Missing dependency. "
+    f"Check logs for detailed error. "
+    f"See process_message() in agent_bridge.py:52"
+)
+```
+
+**Bad:**
+```python
+assert len(messages) > 0  # Unclear what went wrong
+```
+
+**Good:**
+```python
+assert len(messages) > 0, (
+    f"No messages found in result. "
+    f"Expected at least 1 message. "
+    f"Possible causes: (1) Message filter too strict, "
+    f"(2) Database query failed, (3) Empty input. "
+    f"Solution: Check message filter logic in get_messages()"
+)
+```

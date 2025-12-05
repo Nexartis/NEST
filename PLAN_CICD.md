@@ -1,36 +1,64 @@
 # CI/CD Integration for NEST (Issue #8)
 
-## Implementation Status: COMPLETE
+## Implementation Status: ENHANCED (Fail-Fast Pipeline)
 
-### What Was Implemented
+### Current Implementation
 
 #### 1. GitHub Actions Workflow (`.github/workflows/ci.yml`)
+
+**5-Stage Fail-Fast Pipeline:**
 
 ```
 Trigger: Push to main/master OR Pull Request to main/master
 
 ┌─────────────────────────────────────────────────────────────┐
-│  1. LINT JOB (Python 3.11)                                  │
-│     - flake8 critical errors: E9, F63, F7, F82              │
-│     - Fast (~10 seconds)                                    │
+│  STAGE 1: LINT & FORMAT CHECK (~30 seconds)                 │
+│     - flake8 (critical errors + style warnings)             │
+│     - black --check (code formatting)                       │
+│     - isort --check (import order)                          │
+│     ✅ FAIL FAST: Blocks all other stages if fails          │
 └─────────────────────────────────────────────────────────────┘
                             │
                             ▼ (only if lint passes)
 ┌─────────────────────────────────────────────────────────────┐
-│  2. TEST JOB (Python 3.11)                                  │
-│     - pip install -e ".[dev]"                               │
-│     - pytest tests/ -v --tb=long -s --log-cli-level=INFO    │
-│     - 20 unit tests covering agent_bridge.py                │
-│     - Detailed output with diagnostics                      │
+│  STAGE 2: TYPE CHECK (~40 seconds)                          │
+│     - mypy (type hints validation)                          │
+│     - types-requests                                        │
+│     needs: [lint]                                           │
+└─────────────────────────────────────────────────────────────┘
+                            │
+                            ▼ (only if type check passes)
+┌─────────────────────────────────────────────────────────────┐
+│  STAGE 3: UNIT TESTS (~1-2 minutes)                         │
+│     - pytest tests/unit/ -v --tb=short -m "not slow"        │
+│     - 12 unit tests (framework, router, adapters, mentions) │
+│     needs: [lint, type-check]                               │
+└─────────────────────────────────────────────────────────────┘
+                            │
+                            ▼ (only if unit tests pass)
+┌─────────────────────────────────────────────────────────────┐
+│  STAGE 4: INTEGRATION TESTS (~2-5 minutes)                  │
+│     - pytest tests/integration/ -v --tb=short               │
+│     - 7 tests (A2A, MCP, incoming messages)                 │
+│     needs: [unit-tests]                                     │
 └─────────────────────────────────────────────────────────────┘
                             │
                             ▼ (only on push to main)
 ┌─────────────────────────────────────────────────────────────┐
-│  3. INTEGRATION JOB (Python 3.11) - Optional                │
-│     - Runs tests marked with @pytest.mark.integration       │
-│     - For future integration tests                          │
+│  STAGE 5: PERFORMANCE TESTS (~30s-1min) - Main Branch Only  │
+│     - pytest tests/performance/ -v --tb=short -m slow       │
+│     - 2 tests (100 agents, 1000 messages)                   │
+│     needs: [integration-tests]                              │
+│     if: github.ref == 'refs/heads/main'                     │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+**Key Features:**
+- ✅ **Fail-Fast**: Each stage blocks the next if it fails
+- ✅ **Quality Gates**: Lint/format/type checks before running tests
+- ✅ **Layered Testing**: Unit → Integration → Performance
+- ✅ **Efficient**: Saves CI minutes by catching issues early
+- ✅ **Fast Feedback**: Syntax errors caught in 30s, not 5 minutes
 
 #### 2. Test Suite (`tests/`)
 
