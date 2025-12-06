@@ -354,6 +354,95 @@ class TestIncomingA2ARouting:
         # Verify it processed the message (not stuck in loop)
         assert len(response_text) > 0, "Response should have content"
 
+    # -------------------------------------------------------------------------
+    # BUG EXPOSURE TESTS - These tests FAIL to expose library bugs
+    # -------------------------------------------------------------------------
+
+    def test_empty_from_field_returns_error(self, bridge, sample_text_message):
+        """
+        Expected: Empty FROM field should be rejected as invalid A2A format.
+
+        BUG: Library accepts empty FROM field and processes message.
+        """
+        a2a_message = "FROM:\nTO: test-agent\nMESSAGE: hello"
+        response = bridge.handle_message(sample_text_message(a2a_message))
+
+        response_text = response.content.text.lower()
+        assert "invalid" in response_text or "error" in response_text, (
+            f"Expected 'Invalid' or 'Error' for empty FROM field. "
+            f"Got: '{response.content.text}'. "
+            f"Cause: _handle_incoming_a2a() doesn't validate sender is non-empty. "
+            f"Fix: Add `if not sender.strip()` check after parsing FROM field."
+        )
+
+    def test_empty_to_field_returns_error(self, bridge, sample_text_message):
+        """
+        Expected: Empty TO field should be rejected as invalid A2A format.
+
+        BUG: Library accepts empty TO field and processes message.
+        """
+        a2a_message = "FROM: sender\nTO:\nMESSAGE: hello"
+        response = bridge.handle_message(sample_text_message(a2a_message))
+
+        response_text = response.content.text.lower()
+        assert "invalid" in response_text or "error" in response_text, (
+            f"Expected 'Invalid' or 'Error' for empty TO field. "
+            f"Got: '{response.content.text}'. "
+            f"Cause: _handle_incoming_a2a() doesn't validate recipient is non-empty. "
+            f"Fix: Add `if not recipient.strip()` check after parsing TO field."
+        )
+
+    def test_all_empty_a2a_fields_returns_error(self, bridge, sample_text_message):
+        """
+        Expected: All empty fields should be rejected as invalid A2A format.
+
+        BUG: Library accepts completely empty A2A fields.
+        """
+        a2a_message = "FROM:\nTO:\nMESSAGE:"
+        response = bridge.handle_message(sample_text_message(a2a_message))
+
+        response_text = response.content.text.lower()
+        assert "invalid" in response_text or "error" in response_text, (
+            f"Expected 'Invalid' or 'Error' for all empty A2A fields. "
+            f"Got: '{response.content.text}'. "
+            f"Cause: _handle_incoming_a2a() doesn't validate A2A fields are non-empty. "
+            f"Fix: Add validation for all required fields before processing."
+        )
+
+    def test_whitespace_from_field_returns_error(self, bridge, sample_text_message):
+        """
+        Expected: Whitespace-only FROM field should be rejected.
+
+        BUG: Library accepts whitespace-only FROM field.
+        """
+        a2a_message = "FROM:   \nTO: test-agent\nMESSAGE: hello"
+        response = bridge.handle_message(sample_text_message(a2a_message))
+
+        response_text = response.content.text.lower()
+        assert "invalid" in response_text or "error" in response_text, (
+            f"Expected 'Invalid' or 'Error' for whitespace-only FROM field. "
+            f"Got: '{response.content.text}'. "
+            f"Cause: _handle_incoming_a2a() doesn't strip/validate sender field. "
+            f"Fix: Use `sender.strip()` and validate non-empty after stripping."
+        )
+
+    def test_whitespace_to_field_returns_error(self, bridge, sample_text_message):
+        """
+        Expected: Whitespace-only TO field should be rejected.
+
+        BUG: Library accepts whitespace-only TO field.
+        """
+        a2a_message = "FROM: sender\nTO:   \nMESSAGE: hello"
+        response = bridge.handle_message(sample_text_message(a2a_message))
+
+        response_text = response.content.text.lower()
+        assert "invalid" in response_text or "error" in response_text, (
+            f"Expected 'Invalid' or 'Error' for whitespace-only TO field. "
+            f"Got: '{response.content.text}'. "
+            f"Cause: _handle_incoming_a2a() doesn't strip/validate recipient field. "
+            f"Fix: Use `recipient.strip()` and validate non-empty after stripping."
+        )
+
 
 # =============================================================================
 # Tests: Routing Priority
