@@ -10,14 +10,14 @@ Four-layer test strategy following Issue #7 specification.
 
 | Layer | Status | Passing | Failing (Bugs) | NotImplemented | Files |
 |-------|--------|---------|----------------|----------------|-------|
-| **Unit** | ⚠️ Partial | 127 | 8 | 5 | 5 files |
+| **Unit** | ⚠️ Partial | 126 | 11 | 5 | 5 files |
 | **Integration** | ✅ COMPLETE | 232 | 0 | 0 | 4 files |
 | **E2E** | ✅ COMPLETE | 191 | 0 | 0 | 9 files |
 | **Contract** | ⚠️ Partial | 46 | 0 | 27 | 3 files |
 
-**Total: 636 tests** (140 unit + 232 integration + 191 E2E + 73 contract)
-- **Passing: 596** (tests that verify implemented functionality)
-- **Failing: 8** (tests exposing library bugs - need fixes in nanda_core)
+**Total: 638 tests** (142 unit + 232 integration + 191 E2E + 73 contract)
+- **Passing: 595** (tests that verify implemented functionality)
+- **Failing: 11** (tests exposing library bugs - need fixes in nanda_core)
 - **NotImplementedError: 32** (tests for features not yet in nanda_core)
 
 ---
@@ -29,7 +29,7 @@ Four-layer test strategy following Issue #7 specification.
 | File | Passing | Failing | NotImpl | Coverage |
 |------|---------|---------|---------|----------|
 | `test_protocol_adapters.py` | 14 | 0 | 0 | A2A format, metadata, edge cases |
-| `test_protocol_router.py` | 22 | 5 | 0 | 5 routing patterns, priority, errors, **A2A field validation bugs** |
+| `test_protocol_router.py` | 21 | 8 | 0 | 5 routing patterns, priority, errors, **8 bug exposure tests** |
 | `test_agentfacts_parser.py` | 0 | 0 | 5 | ⏳ NOT IMPLEMENTED in nanda_core |
 | `test_mention_extraction_and_routing.py` | 49 | 3 | 0 | Standard/unicode formats, commands |
 | `test_framework_adapters.py` | 31 | 0 | 0 | Required/optional params, formats |
@@ -43,13 +43,13 @@ Tests REAL `SimpleAgentBridge` from nanda_core.
 - TestA2AErrorHandling (1) - exception handling
 - TestA2AEdgeCases (5) - empty, special chars, unicode, long text, whitespace
 
-#### Protocol Router (27 tests: 22 passing, 5 failing)
+#### Protocol Router (29 tests: 21 passing, 8 failing)
 Tests REAL `SimpleAgentBridge.handle_message()` routing logic.
 - TestRegularMessageRouting (4) - agent_logic routing, telemetry
-- TestAtPrefixRouting (4) - @agent-id outgoing A2A
+- TestAtPrefixRouting (3) - @agent-id outgoing A2A (removed redundant test)
 - TestHashPrefixRouting (2) - #registry:server MCP
 - TestSlashPrefixRouting (3) - /command system commands
-- TestIncomingA2ARouting (8) - FROM:/TO:/MESSAGE: format + **5 bug exposure tests**
+- TestIncomingA2ARouting (11) - FROM:/TO:/MESSAGE: format + **8 bug exposure tests**
 - TestRoutingPriority (3) - priority order verification
 - TestRoutingErrorHandling (3) - exceptions, non-text, conversation preservation
 
@@ -398,7 +398,7 @@ pytest -m "not slow"     # Skip slow tests
 - [x] E2E tests for real library code (RegistryClient, MCPRegistry, MCPClient)
 
 ### ⚠️ Test Implementation Status (Honest Assessment)
-- [x] Unit Tests - 127 passing + 8 failing (bugs) + 5 NotImplementedError (AgentFacts)
+- [x] Unit Tests - 126 passing + 11 failing (bugs) + 5 NotImplementedError (AgentFacts)
 - [x] Integration Tests - 232 passing
 - [x] E2E Tests - 191 passing
 - [x] Contract Tests - 46 passing + 27 NotImplementedError (SLIM, x402)
@@ -406,7 +406,8 @@ pytest -m "not slow"     # Skip slow tests
 - [x] HTTP error code coverage (400, 401, 403, 404, 500, 502, 503)
 - [x] Unicode/edge case coverage (12 languages including RTL scripts)
 - [x] Real library code testing (not just mocks)
-- [x] Bug exposure tests - 8 tests that FAIL to expose library bugs
+- [x] Bug exposure tests - 11 tests that FAIL to expose library bugs
+- [x] Removed redundant tests, strengthened weak assertions
 
 ### Not Implemented in nanda_core (Tests Raise NotImplementedError)
 
@@ -427,7 +428,7 @@ pytest -m "not slow"     # Skip slow tests
 
 4. **x402 Protocol Not Implemented** (Issue #4): 17 contract tests raise NotImplementedError.
 
-### Library Bugs Discovered Through Testing (8 Failing Tests)
+### Library Bugs Discovered Through Testing (11 Failing Tests)
 
 These tests **FAIL** to expose bugs in `nanda_core/core/agent_bridge.py`:
 
@@ -458,3 +459,16 @@ These tests **FAIL** to expose bugs in `nanda_core/core/agent_bridge.py`:
 - `_handle_incoming_a2a()`: Add `if not sender.strip(): return error`
 - `_handle_incoming_a2a()`: Add `if not recipient.strip(): return error`
 - `_handle_incoming_a2a()`: Validate all required fields are non-empty before processing
+
+#### A2A Format Detection Bugs (3 tests in test_protocol_router.py)
+
+| Failing Test | Input | Expected | Actual (Bug) |
+|--------------|-------|----------|--------------|
+| `test_lowercase_a2a_format_detected` | `from: sender\nto: test\nmessage: hi` | Detected as A2A | Treated as regular message |
+| `test_wrong_order_a2a_format_detected` | `TO: test\nFROM: sender\nMESSAGE: hi` | Detected as A2A | Treated as regular message |
+| `test_mcp_empty_server_returns_invalid_format` | `#registry: query` | "Invalid format" | Looks up empty server |
+
+**Fixes Required:**
+- `handle_message()`: Use case-insensitive check: `text.upper().startswith('FROM:')`
+- `handle_message()`: Parse A2A fields by searching anywhere, not just startswith
+- `_handle_mcp_message()`: Add `if not server_name.strip(): return error`

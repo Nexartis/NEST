@@ -179,25 +179,8 @@ class TestAtPrefixRouting:
             f"Fix: Check agent ID parsing in _handle_agent_message()"
         )
 
-    def test_handles_at_with_no_agent_id(self, bridge, sample_text_message):
-        """
-        Given: Message "@ " (@ with no agent ID)
-        When: Processing
-        Then: Returns error message about invalid format
-        """
-        response = bridge.handle_message(sample_text_message("@ "))
-
-        response_text = response.content.text.lower()
-        # Should either error or mention missing agent
-        assert isinstance(response, Message), (
-            "Should return Message even for malformed @ syntax"
-        )
-        # Verify it didn't just pass through to agent_logic
-        assert "response to: @" not in response_text, (
-            f"Malformed @ should not pass through to agent_logic. Got: '{response.content.text}'. "
-            f"Cause: Empty @mention not handled specially. "
-            f"Fix: Validate agent ID in _handle_agent_message()"
-        )
+    # NOTE: test_handles_at_with_no_agent_id removed - redundant with
+    # test_at_space_returns_invalid_format in test_mention_extraction_and_routing.py
 
 
 # =============================================================================
@@ -226,7 +209,7 @@ class TestHashPrefixRouting:
         """
         Given: Invalid MCP server reference
         When: Processing
-        Then: Returns error Message, doesn't raise exception
+        Then: Returns error Message with "not found" indication
         """
         response = bridge.handle_message(sample_text_message("#invalid:server query"))
 
@@ -235,9 +218,13 @@ class TestHashPrefixRouting:
             f"Cause: MCP error not caught. "
             f"Fix: Check exception handling in _handle_mcp_message()"
         )
-        # Error responses typically contain "error" or indicate the problem
         response_lower = response.content.text.lower()
-        # Just verify it's a valid response, error handling varies
+        assert "not found" in response_lower or "error" in response_lower, (
+            f"Expected 'not found' or 'error' for invalid MCP server. "
+            f"Got: '{response.content.text}'. "
+            f"Cause: MCP error not returned as user-friendly message. "
+            f"Fix: Return descriptive error in _handle_mcp_message()"
+        )
 
 
 # =============================================================================
@@ -306,17 +293,25 @@ class TestIncomingA2ARouting:
         """
         Given: Message in FROM:/TO:/MESSAGE: format
         When: Processing
-        Then: Routes to incoming A2A handler, processes message content
+        Then: Routes to incoming A2A handler, response mentions sender
         """
         a2a_message = "FROM: sender-agent\nTO: test-agent\nMESSAGE: Hello there"
         response = bridge.handle_message(sample_text_message(a2a_message))
 
         response_text = response.content.text.lower()
-        # Should process as incoming A2A, not treat as regular message
-        assert "from:" not in response_text or "sender" in response_text, (
-            f"Expected incoming A2A handling. Got: '{response.content.text}'. "
+        # A2A handler should reference the sender in response
+        assert "sender-agent" in response_text, (
+            f"Expected response to reference 'sender-agent'. "
+            f"Got: '{response.content.text}'. "
             f"Cause: FROM:/TO:/MESSAGE: format not routed to A2A handler. "
             f"Fix: Check startswith('FROM:') and 'TO:' condition"
+        )
+        # Should NOT contain raw "FROM:" in response (would mean it was treated as regular message)
+        assert "from:" not in response_text, (
+            f"Raw 'FROM:' in response indicates message was treated as regular text. "
+            f"Got: '{response.content.text}'. "
+            f"Cause: A2A format detection failed. "
+            f"Fix: Check A2A format detection in handle_message()"
         )
 
     def test_incoming_a2a_priority_over_at_prefix(self, bridge, sample_text_message):
@@ -341,18 +336,23 @@ class TestIncomingA2ARouting:
         """
         Given: Incoming A2A from self (test-agent -> test-agent)
         When: Processing
-        Then: Handles gracefully without infinite loop
+        Then: Should detect self-loop and warn or reject
+
+        Note: Current behavior processes the message without warning.
+        This test verifies basic handling - see bug exposure tests for stricter behavior.
         """
         loop_message = "FROM: test-agent\nTO: test-agent\nMESSAGE: Hello myself"
         response = bridge.handle_message(sample_text_message(loop_message))
 
-        response_text = response.content.text.lower()
-        # Should handle without crashing and potentially warn about self-message
         assert isinstance(response, Message), (
             f"Self-message should return valid response. Got: {type(response).__name__}"
         )
-        # Verify it processed the message (not stuck in loop)
-        assert len(response_text) > 0, "Response should have content"
+        # Verify response has content (not stuck in infinite loop)
+        assert len(response.content.text) > 0, "Response should have content"
+        # Verify it references the sender (test-agent)
+        assert "test-agent" in response.content.text.lower(), (
+            f"Response should reference sender. Got: '{response.content.text}'"
+        )
 
     # -------------------------------------------------------------------------
     # BUG EXPOSURE TESTS - These tests FAIL to expose library bugs
@@ -441,6 +441,58 @@ class TestIncomingA2ARouting:
             f"Got: '{response.content.text}'. "
             f"Cause: _handle_incoming_a2a() doesn't strip/validate recipient field. "
             f"Fix: Use `recipient.strip()` and validate non-empty after stripping."
+        )
+
+    def test_lowercase_a2a_format_detected(self, bridge, sample_text_message):
+        """
+        Expected: Lowercase from:/to:/message: should be detected as A2A format.
+
+        BUG: Library only detects uppercase FROM:/TO:/MESSAGE: (case-sensitive).
+        """
+        a2a_message = "from: sender\nto: test-agent\nmessage: hello"
+        response = bridge.handle_message(sample_text_message(a2a_message))
+
+        response_text = response.content.text.lower()
+        # Should be detected as A2A and reference the sender
+        assert "sender" in response_text and "from:" not in response_text, (
+            f"Expected lowercase A2A format to be detected. "
+            f"Got: '{response.content.text}'. "
+            f"Cause: A2A detection is case-sensitive (checks startswith('FROM:')). "
+            f"Fix: Use case-insensitive check: `text.upper().startswith('FROM:')`"
+        )
+
+    def test_wrong_order_a2a_format_detected(self, bridge, sample_text_message):
+        """
+        Expected: TO/FROM/MESSAGE order should be detected as A2A format.
+
+        BUG: Library only detects FROM/TO/MESSAGE order.
+        """
+        a2a_message = "TO: test-agent\nFROM: sender\nMESSAGE: hello"
+        response = bridge.handle_message(sample_text_message(a2a_message))
+
+        response_text = response.content.text.lower()
+        # Should be detected as A2A and reference the sender
+        assert "sender" in response_text and "to:" not in response_text, (
+            f"Expected A2A format to be detected regardless of field order. "
+            f"Got: '{response.content.text}'. "
+            f"Cause: A2A detection requires FROM: at start (checks startswith). "
+            f"Fix: Parse fields by searching for 'FROM:', 'TO:', 'MESSAGE:' anywhere."
+        )
+
+    def test_mcp_empty_server_returns_invalid_format(self, bridge, sample_text_message):
+        """
+        Expected: Empty server name should return "Invalid format" error.
+
+        BUG: Library tries to lookup empty server name.
+        """
+        response = bridge.handle_message(sample_text_message("#registry: query"))
+
+        response_text = response.content.text.lower()
+        assert "invalid" in response_text or "format" in response_text, (
+            f"Expected 'Invalid format' for empty server name. "
+            f"Got: '{response.content.text}'. "
+            f"Cause: _handle_mcp_message() doesn't validate server name is non-empty. "
+            f"Fix: Add `if not server_name.strip()` check after parsing."
         )
 
 
