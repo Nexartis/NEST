@@ -13,9 +13,9 @@ Four-layer test strategy following Issue #7 specification.
 | **Unit** | ✅ COMPLETE | 175 | 5 files |
 | **Integration** | ✅ COMPLETE | 232 | 4 files |
 | **E2E** | ✅ COMPLETE | 151 | 9 files |
-| **Contract** | ✅ COMPLETE | 51 | 3 files |
+| **Contract** | ✅ COMPLETE | 73 | 3 files |
 
-**Total: 609 tests** (175 unit + 232 integration + 151 E2E + 51 contract)
+**Total: 631 tests** (175 unit + 232 integration + 151 E2E + 73 contract)
 
 ---
 
@@ -272,21 +272,24 @@ Four-layer test strategy following Issue #7 specification.
 
 | File | Tests | Status |
 |------|-------|--------|
-| `test_a2a_compliance.py` | 24 | ✅ All passing |
+| `test_a2a_compliance.py` | 46 | ✅ All passing |
 | `test_slim_compliance.py` | 10 | ⏳ NotImplementedError (protocol not implemented) |
 | `test_x402_payments.py` | 17 | ⏳ NotImplementedError (protocol not implemented) |
 
-**Total: 51 contract tests**
+**Total: 73 contract tests**
 
 ### Detailed Breakdown
 
-#### A2A Protocol Compliance (24 tests) - IMPLEMENTED
-- TestA2AMessageStructure (8) - content, role, message_id, conversation_id, parent_message_id, metadata
-- TestA2AContentTypes (4) - text field, string type, unicode, special chars
-- TestA2AJsonSerialization (3) - valid JSON, required fields, type field
-- TestA2AResponseContracts (3) - valid message, conversation_id, parent reference
-- TestA2AWireFormat (3) - endpoint path, POST method, JSON content-type
-- TestA2AAgentRoutingFormat (3) - FROM/TO/MESSAGE, @mention, #mcp formats
+#### A2A Protocol Compliance (46 tests) - IMPLEMENTED
+Tests REAL python_a2a library classes (Message, TextContent, MessageRole, Metadata).
+
+- TestA2AMessageRequiredFields (4) - content, role, role enum, message_id
+- TestA2AMessageOptionalFields (4) - conversation_id, parent_message_id, metadata, minimal
+- TestA2ATextContent (23) - text field, string type, empty, whitespace, 10 unicode languages, 9 special characters
+- TestA2AJsonSerialization (4) - serialization method, valid JSON, required fields, round-trip
+- TestA2AResponseContracts (4) - AGENT role exists/used, parent reference, conversation_id
+- TestA2AMessageIdGeneration (3) - auto-generation, preservation, uniqueness
+- TestA2AEdgeCases (4) - 100KB text, long message_id, minimal fields, JSON-like strings
 
 #### SLIM Protocol Compliance (10 tests) - NOT IMPLEMENTED
 All tests raise `NotImplementedError` until protocol is added to nanda_core.
@@ -399,7 +402,7 @@ pytest -m "not slow"     # Skip slow tests
 - [x] Full MCP integration flow test
 
 ### ✅ All Test Layers Complete
-- [x] Contract tests for protocol compliance (51 tests)
+- [x] Contract tests for protocol compliance (73 tests)
 
 ### Known Issues
 1. **MCP Package Dependency**: `nanda_core/core/mcp_client.py` imports `mcp.client.streamable_http` which doesn't exist in the installed `mcp` package. This is a library issue - tests document expected behavior.
