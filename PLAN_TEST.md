@@ -8,38 +8,42 @@ Four-layer test strategy following Issue #7 specification.
 
 ## Current Status
 
-| Layer | Status | Tests | Files |
-|-------|--------|-------|-------|
-| **Unit** | ✅ COMPLETE | 175 | 5 files |
-| **Integration** | ✅ COMPLETE | 232 | 4 files |
-| **E2E** | ✅ COMPLETE | 151 | 9 files |
-| **Contract** | ✅ COMPLETE | 73 | 3 files |
+| Layer | Status | Passing | NotImplemented | Files |
+|-------|--------|---------|----------------|-------|
+| **Unit** | ⚠️ Partial | 121 | 5 | 5 files |
+| **Integration** | ✅ COMPLETE | 232 | 0 | 4 files |
+| **E2E** | ✅ COMPLETE | 151 | 0 | 9 files |
+| **Contract** | ⚠️ Partial | 46 | 27 | 3 files |
 
-**Total: 631 tests** (175 unit + 232 integration + 151 E2E + 73 contract)
+**Total: 582 tests** (126 unit + 232 integration + 151 E2E + 73 contract)
+- **Passing: 550** (tests that verify implemented functionality)
+- **NotImplementedError: 32** (tests for features not yet in nanda_core)
 
 ---
 
-## Layer 1: Unit Tests (COMPLETE)
+## Layer 1: Unit Tests (PARTIAL)
 
 ### Files and Test Counts
 
-| File | Tests | Coverage |
-|------|-------|----------|
-| `test_protocol_adapters.py` | 14 | A2A format, metadata, edge cases |
-| `test_protocol_router.py` | 22 | 5 routing patterns, priority, errors |
-| `test_agentfacts_parser.py` | 32 | Parse, validate, aliases, edge cases |
-| `test_mention_extraction_and_routing.py` | 54 | Standard/unicode formats (12 languages), boundaries, position, commands |
-| `test_framework_adapters.py` | 31 | Required/optional params, formats, edge cases |
+| File | Passing | NotImplemented | Coverage |
+|------|---------|----------------|----------|
+| `test_protocol_adapters.py` | 14 | 0 | A2A format, metadata, edge cases |
+| `test_protocol_router.py` | 22 | 0 | 5 routing patterns, priority, errors |
+| `test_agentfacts_parser.py` | 0 | 5 | ⏳ NOT IMPLEMENTED in nanda_core |
+| `test_mention_extraction_and_routing.py` | 54 | 0 | Standard/unicode formats, commands |
+| `test_framework_adapters.py` | 31 | 0 | Required/optional params, formats |
 
 ### Detailed Breakdown
 
-#### Protocol Adapters (14 tests)
+#### Protocol Adapters (14 tests) ✅
+Tests REAL `SimpleAgentBridge` from nanda_core.
 - TestA2AMessageFormatting (4) - role, content type, agent ID prefix, non-text rejection
 - TestA2AMessageMetadata (4) - conversation ID, parent ID, unique message IDs
 - TestA2AErrorHandling (1) - exception handling
 - TestA2AEdgeCases (5) - empty, special chars, unicode, long text, whitespace
 
-#### Protocol Router (22 tests)
+#### Protocol Router (22 tests) ✅
+Tests REAL `SimpleAgentBridge.handle_message()` routing logic.
 - TestRegularMessageRouting (4) - agent_logic routing, telemetry
 - TestAtPrefixRouting (4) - @agent-id outgoing A2A
 - TestHashPrefixRouting (2) - #registry:server MCP
@@ -48,16 +52,17 @@ Four-layer test strategy following Issue #7 specification.
 - TestRoutingPriority (3) - priority order verification
 - TestRoutingErrorHandling (3) - exceptions, non-text, conversation preservation
 
-#### AgentFacts Parser (32 tests)
-- TestParseRequiredFields (5) - agent_id validation
-- TestParseOptionalFields (5) - name, description, expertise, endpoint, version
-- TestParseFieldAliases (6) - agent_name, about_response, capabilities aliases
-- TestParseCompleteConfig (2) - full config, unknown fields
-- TestParseErrorHandling (5) - None, string, list, numeric, non-list expertise
-- TestParseEdgeCases (6) - unicode, special chars, empty list, null, long text
-- TestValidateAgentFacts (3) - warnings for incomplete facts
+#### AgentFacts Parser (5 tests) ⏳ NOT IMPLEMENTED
+**All tests raise NotImplementedError** - AgentFacts parser does not exist in nanda_core.
+Concise placeholder tests awaiting library implementation.
+- test_parse_agent_facts_exists - parser function should exist
+- test_agentfacts_class_exists - dataclass should exist
+- test_required_field_agent_id - agent_id required
+- test_optional_fields_supported - name, description, etc.
+- test_validation_errors - invalid input handling
 
-#### @mention Extraction & Routing (47 tests)
+#### @mention Extraction & Routing (54 tests) ✅
+Tests REAL `SimpleAgentBridge` mention handling.
 - TestMentionStandardFormats (11) - simple, hyphens, underscores, numbers, dots, case, single char
 - TestMentionUnicodeFormats (5) - Chinese, Japanese, Cyrillic, French, Greek
 - TestMentionBoundaryConditions (5) - no body, whitespace only, @ alone, @ space, empty
@@ -383,30 +388,39 @@ pytest -m "not slow"     # Skip slow tests
 
 ### ✅ Completed (Issue #7 Acceptance Criteria)
 - [x] pytest configured with coverage reporting
-- [x] Unit tests for all protocol adapters (>80% coverage)
+- [x] Unit tests for protocol adapters (A2A implemented, SLIM not in library)
 - [x] Integration tests with mocked external dependencies
 - [x] Test fixtures for common scenarios (agent configs, mock responses)
 - [x] Mock NANDA Index for integration tests
-- [x] E2E test suite with multi-agent scenarios (subprocess-based, no Docker required)
+- [x] E2E test suite with multi-agent scenarios (subprocess-based, no Docker)
 - [x] E2E tests cover: agent discovery, @mention routing
 - [x] E2E tests for real library code (RegistryClient, MCPRegistry, MCPClient)
 
-### ✅ Test Implementation Status
-- [x] Unit Tests - 175 tests across 5 files
-- [x] Integration Tests - 232 tests across 4 files
-- [x] E2E Tests - 151 tests across 9 files
+### ⚠️ Test Implementation Status (Honest Assessment)
+- [x] Unit Tests - 121 passing + 5 NotImplementedError (AgentFacts)
+- [x] Integration Tests - 232 passing
+- [x] E2E Tests - 151 passing
+- [x] Contract Tests - 46 passing + 27 NotImplementedError (SLIM, x402)
 - [x] Error message quality (Expected/Got/Cause/Fix format)
 - [x] HTTP error code coverage (400, 401, 403, 404, 500, 502, 503)
 - [x] Unicode/edge case coverage (12 languages including RTL scripts)
 - [x] Real library code testing (not just mocks)
-- [x] Full MCP integration flow test
 
-### ✅ All Test Layers Complete
-- [x] Contract tests for protocol compliance (73 tests)
+### Not Implemented in nanda_core (Tests Raise NotImplementedError)
+
+| Feature | Tests | GitHub Issue |
+|---------|-------|--------------|
+| AgentFacts Parser | 5 | Not filed |
+| SLIM Protocol | 10 | Issue #3 |
+| x402 Payments | 17 | Issue #4 |
+
+**Total: 32 tests** awaiting library implementation.
 
 ### Known Issues
-1. **MCP Package Dependency**: `nanda_core/core/mcp_client.py` imports `mcp.client.streamable_http` which doesn't exist in the installed `mcp` package. This is a library issue - tests document expected behavior.
+1. **MCP Package Dependency**: `nanda_core/core/mcp_client.py` imports `mcp.client.streamable_http` which doesn't exist in the installed `mcp` package. This is a library issue.
 
-2. **SLIM Protocol Not Implemented**: 10 contract tests raise NotImplementedError. Tests define expected specification for future implementation.
+2. **AgentFacts Parser Not Implemented**: 5 unit tests raise NotImplementedError. No GitHub issue filed yet.
 
-3. **x402 Protocol Not Implemented**: 17 contract tests raise NotImplementedError. Tests define expected specification for future implementation.
+3. **SLIM Protocol Not Implemented** (Issue #3): 10 contract tests raise NotImplementedError.
+
+4. **x402 Protocol Not Implemented** (Issue #4): 17 contract tests raise NotImplementedError.
