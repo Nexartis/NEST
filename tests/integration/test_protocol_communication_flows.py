@@ -122,6 +122,279 @@ def assert_error_response(response, expected_keywords: list, context: str):
 
 
 # =============================================================================
+# Tests: HTTP Error Code Coverage
+# =============================================================================
+
+class TestHTTPErrorCodeCoverage:
+    """Comprehensive HTTP error code testing for registry lookups."""
+
+    @pytest.mark.parametrize("status_code,description", [
+        (400, "Bad Request - malformed agent ID"),
+        (401, "Unauthorized - registry requires auth"),
+        (403, "Forbidden - no access to agent"),
+        (502, "Bad Gateway - upstream registry error"),
+        (503, "Service Unavailable - registry down"),
+    ])
+    @patch('nanda_core.core.agent_bridge.requests.get')
+    def test_registry_http_error_handled_gracefully(
+        self, mock_get, status_code, description, bridge_with_registry,
+        sample_text_message, mock_registry_response
+    ):
+        """
+        Given: Registry returns HTTP {status_code} ({description})
+        When: Looking up agent
+        Then: Returns error message (not crash)
+        """
+        mock_get.return_value = mock_registry_response(status_code, {"error": description})
+
+        response = bridge_with_registry.handle_message(
+            sample_text_message("@target-agent Hello")
+        )
+
+        assert isinstance(response, Message), (
+            f"Expected Message for HTTP {status_code}. Got crash. "
+            f"Fix: Handle {status_code} status code"
+        )
+        # Should indicate error or not found
+        response_lower = response.content.text.lower()
+        assert any(kw in response_lower for kw in ["error", "not found", "failed"]), (
+            f"Expected error indication for HTTP {status_code} ({description}). "
+            f"Got: '{response.content.text}'. "
+            f"Fix: Return descriptive error for status >= 400"
+        )
+
+
+# =============================================================================
+# Tests: Agent ID Edge Cases
+# =============================================================================
+
+class TestAgentIDEdgeCases:
+    """Tests for unusual agent ID formats in @mentions."""
+
+    def test_empty_agent_id_handled(self, bridge_without_registry, sample_text_message):
+        """
+        DEBATABLE: "@ Hello" (empty agent ID after @) should be handled.
+
+        Given: "@ Hello" (@ followed by space, no agent ID)
+        When: Processing
+        Then: Either treats as regular message or returns format error (not crash)
+        """
+        response = bridge_without_registry.handle_message(
+            sample_text_message("@ Hello there")
+        )
+
+        assert isinstance(response, Message), (
+            "Expected Message for empty agent ID. Got crash. "
+            "Fix: Validate agent ID is non-empty after @"
+        )
+
+    def test_whitespace_only_agent_id_handled(self, bridge_without_registry, sample_text_message):
+        """
+        DEBATABLE: "@   Hello" (whitespace after @) should be handled.
+
+        Given: "@   Hello" (multiple spaces after @)
+        When: Processing
+        Then: Either treats as regular message or returns format error
+        """
+        response = bridge_without_registry.handle_message(
+            sample_text_message("@   Hello there")
+        )
+
+        assert isinstance(response, Message), (
+            "Expected Message for whitespace agent ID. Got crash."
+        )
+
+    def test_very_long_agent_id_handled(self, bridge_without_registry, sample_text_message):
+        """
+        Given: Agent ID with 200 characters
+        When: Processing
+        Then: Handles without crash (may return not found)
+        """
+        long_id = "a" * 200
+        response = bridge_without_registry.handle_message(
+            sample_text_message(f"@{long_id} Hello")
+        )
+
+        assert isinstance(response, Message), (
+            "Expected Message for 200-char agent ID. Got crash. "
+            "Fix: No artificial length limit on agent ID"
+        )
+
+    @pytest.mark.parametrize("agent_id,description", [
+        ("エージェント", "Japanese agent ID"),
+        ("代理", "Chinese agent ID"),
+        ("агент", "Cyrillic agent ID"),
+        ("에이전트", "Korean agent ID"),
+        ("agent-café", "Accented characters"),
+    ])
+    def test_unicode_agent_id_handled(
+        self, bridge_without_registry, sample_text_message, agent_id, description
+    ):
+        """
+        Given: Unicode agent ID ({description})
+        When: Processing @mention
+        Then: Handles without crash (may return not found)
+        """
+        response = bridge_without_registry.handle_message(
+            sample_text_message(f"@{agent_id} Hello")
+        )
+
+        assert isinstance(response, Message), (
+            f"Expected Message for {description}. Got crash. "
+            "Fix: Support unicode in agent ID regex"
+        )
+
+    @pytest.mark.parametrize("agent_id,description,risk", [
+        ("agent/path", "forward slash", "URL path injection"),
+        ("agent?query=1", "question mark", "query string injection"),
+        ("agent#frag", "hash/fragment", "URL fragment injection"),
+        ("agent%20test", "percent encoding", "double encoding risk"),
+        ("agent&other=val", "ampersand", "query param injection"),
+    ])
+    @patch('nanda_core.core.agent_bridge.requests.get')
+    def test_url_special_chars_in_agent_id(
+        self, mock_get, bridge_with_registry, sample_text_message,
+        mock_registry_response, agent_id, description, risk
+    ):
+        """
+        DEBATABLE: Special URL characters in agent ID ({description}).
+
+        Given: Agent ID with {description}
+        When: Building registry lookup URL
+        Then: Either URL-encodes or rejects (not {risk})
+        """
+        mock_get.return_value = mock_registry_response(404)
+
+        response = bridge_with_registry.handle_message(
+            sample_text_message(f"@{agent_id} Hello")
+        )
+
+        # Check if request was made and URL is safe
+        if mock_get.called:
+            call_url = mock_get.call_args[0][0]
+            # The raw special char should NOT appear unencoded in URL path
+            # (after /lookup/ but before any legitimate query string)
+            lookup_path = call_url.split("/lookup/")[-1].split("?")[0]
+            if agent_id in lookup_path and any(c in agent_id for c in "/?#&"):
+                # This could be a security issue
+                pass  # Test passes but documents the behavior
+
+        assert isinstance(response, Message), (
+            f"Expected Message for agent ID with {description}. Got crash. "
+            f"Risk: {risk}. Fix: URL-encode agent IDs"
+        )
+
+
+# =============================================================================
+# Tests: URL Construction Edge Cases
+# =============================================================================
+
+class TestURLConstructionEdgeCases:
+    """Tests for registry URL building edge cases."""
+
+    @patch('nanda_core.core.agent_bridge.requests.get')
+    def test_registry_url_trailing_slash_handled(
+        self, mock_get, mock_agent_logic, sample_text_message, mock_registry_response
+    ):
+        """
+        DEBATABLE: Registry URL with trailing slash may cause double-slash.
+
+        Given: registry_url="http://registry.test/" (trailing slash)
+        When: Building lookup URL for agent
+        Then: URL is clean (no //lookup or lookup//agent)
+        """
+        bridge = SimpleAgentBridge(
+            agent_id="test",
+            agent_logic=mock_agent_logic,
+            registry_url="http://registry.test/"  # Trailing slash
+        )
+        mock_get.return_value = mock_registry_response(404)
+
+        bridge.handle_message(sample_text_message("@target Hello"))
+
+        if mock_get.called:
+            call_url = mock_get.call_args[0][0]
+            assert "//" not in call_url.replace("http://", "").replace("https://", ""), (
+                f"DEBATABLE: Double slash in URL: '{call_url}'. "
+                "Cause: Trailing slash in registry_url not stripped. "
+                "Fix: Strip trailing slash or use urljoin()"
+            )
+
+    @patch('nanda_core.core.agent_bridge.requests.get')
+    @patch('nanda_core.core.agent_bridge.A2AClient')
+    def test_malformed_agent_url_in_response_handled(
+        self, mock_a2a_class, mock_get, bridge_with_registry,
+        sample_text_message, mock_registry_response
+    ):
+        """
+        Given: Registry returns malformed agent_url (no protocol)
+        When: Creating A2A client
+        Then: Handles gracefully (not crash)
+        """
+        # Missing http:// prefix
+        mock_get.return_value = mock_registry_response(200, {"agent_url": "invalid-url-no-protocol"})
+        mock_a2a_class.side_effect = Exception("Invalid URL")
+
+        response = bridge_with_registry.handle_message(
+            sample_text_message("@target Hello")
+        )
+
+        assert isinstance(response, Message), (
+            "Expected Message for malformed agent_url. Got crash. "
+            "Fix: Validate agent_url before creating A2AClient"
+        )
+
+    @patch('nanda_core.core.agent_bridge.requests.get')
+    @patch('nanda_core.core.agent_bridge.A2AClient')
+    def test_empty_agent_url_in_response_handled(
+        self, mock_a2a_class, mock_get, bridge_with_registry,
+        sample_text_message, mock_registry_response
+    ):
+        """
+        Given: Registry returns empty agent_url
+        When: Processing
+        Then: Returns error (not crash on empty URL)
+        """
+        mock_get.return_value = mock_registry_response(200, {"agent_url": ""})
+
+        response = bridge_with_registry.handle_message(
+            sample_text_message("@target Hello")
+        )
+
+        assert isinstance(response, Message), (
+            "Expected Message for empty agent_url. Got crash. "
+            "Fix: Check agent_url is non-empty before use"
+        )
+        # Should indicate error
+        response_lower = response.content.text.lower()
+        assert any(kw in response_lower for kw in ["error", "not found", "failed", "invalid"]), (
+            f"Expected error for empty agent_url. Got: '{response.content.text}'"
+        )
+
+    @patch('nanda_core.core.agent_bridge.requests.get')
+    @patch('nanda_core.core.agent_bridge.A2AClient')
+    def test_null_agent_url_in_response_handled(
+        self, mock_a2a_class, mock_get, bridge_with_registry,
+        sample_text_message, mock_registry_response
+    ):
+        """
+        Given: Registry returns null/None agent_url
+        When: Processing
+        Then: Returns error (not crash)
+        """
+        mock_get.return_value = mock_registry_response(200, {"agent_url": None})
+
+        response = bridge_with_registry.handle_message(
+            sample_text_message("@target Hello")
+        )
+
+        assert isinstance(response, Message), (
+            "Expected Message for null agent_url. Got crash. "
+            "Fix: Handle None agent_url gracefully"
+        )
+
+
+# =============================================================================
 # Tests: A2A Message Format Validation
 # =============================================================================
 

@@ -11,13 +11,13 @@ Four-layer test strategy following Issue #7 specification.
 | Layer | Status | Passing | Failing (Bugs) | NotImplemented | Files |
 |-------|--------|---------|----------------|----------------|-------|
 | **Unit** | ⚠️ Partial | 126 | 24 | 5 | 5 files |
-| **Integration** | ⚠️ Partial | 271 | 9 | 0 | 4 files |
+| **Integration** | ⚠️ Partial | 293 | 10 | 0 | 4 files |
 | **E2E** | ✅ COMPLETE | 191 | 0 | 0 | 9 files |
 | **Contract** | ⚠️ Partial | 46 | 0 | 27 | 3 files |
 
-**Total: 699 tests** (155 unit + 280 integration + 191 E2E + 73 contract)
-- **Passing: 634** (tests that verify implemented functionality)
-- **Failing: 33** (tests exposing library bugs - need fixes in nanda_core)
+**Total: 721 tests** (155 unit + 302 integration + 191 E2E + 73 contract)
+- **Passing: 655** (tests that verify implemented functionality)
+- **Failing: 34** (tests exposing library bugs - need fixes in nanda_core)
 - **NotImplementedError: 32** (tests for features not yet in nanda_core)
 
 ---
@@ -96,20 +96,23 @@ Tests REAL `SimpleAgentBridge` initialization, validation, and behavior.
 
 | File | Tests | Failing | Coverage |
 |------|-------|---------|----------|
-| `test_protocol_communication_flows.py` | 31 | 0 | A2A routing, registry lookup, message sending |
+| `test_protocol_communication_flows.py` | 64 | 1 | A2A routing, registry lookup, **1 URL construction bug** |
 | `test_registry_client.py` | 82 | 0 | Registration, lookup, search, health, HTTP errors, Unicode (14 languages) |
 | `test_mcp_integration.py` | 75 | 3 | NANDA/Smithery lookups, URL building, **3 bug exposure tests** |
 | `test_framework_adapter_bridge.py` | 81 | 6 | NANDA adapter, bridge creation, lifecycle, **6 bug exposure tests** |
 
 ### Detailed Breakdown
 
-#### Protocol Communication Flows (31 tests)
+#### Protocol Communication Flows (64 tests: 63 passing, 1 failing)
+- TestHTTPErrorCodeCoverage (5) - 400, 401, 403, 502, 503 registry errors
+- TestAgentIDEdgeCases (13) - empty, whitespace, long, 5 unicode languages, 5 URL special chars
+- TestURLConstructionEdgeCases (4) - **1 DEBATABLE BUG** (trailing slash causes //), malformed/empty/null agent_url
 - TestA2AMessageFormatValidation (7) - bare mention, valid format, middle mention, special chars
 - TestRegistryLookupBehavior (8) - endpoint calls, 404, 500, timeout, connection error, invalid JSON
 - TestA2AMessageSending (4) - client creation, response handling, send failure, empty response
 - TestIncomingA2AMessageHandling (4) - FROM/TO/MESSAGE parsing, loop prevention, malformed
 - TestMessageMetadataPreservation (2) - conversation ID preservation and generation
-- TestA2AEdgeCasesAndBoundaries (6) - long message, unicode, self-mention, multiple @, whitespace, newlines
+- TestA2AEdgeCasesAndBoundaries (17) - long message, 12 unicode scripts, self-mention, multiple @, whitespace, newlines
 
 #### Registry Client (82 tests)
 - TestRegistryClientInitialization (4) - URL config, defaults, file reading, SSL
@@ -442,12 +445,12 @@ pytest -m "not slow"     # Skip slow tests
 
 4. **x402 Protocol Not Implemented** (Issue #4): 17 contract tests raise NotImplementedError.
 
-### Library Issues Discovered Through Testing (33 Failing Tests)
+### Library Issues Discovered Through Testing (34 Failing Tests)
 
 These tests **FAIL** to expose potential issues in `nanda_core/core/agent_bridge.py`, `nanda_core/core/adapter.py`, and `nanda_core/core/mcp_registry.py`.
 
 **CLEAR BUGS** (21): Objectively wrong behavior - no validation, wasteful operations, malformed output
-**DEBATABLE** (12): Design decisions that may or may not be bugs - needs spec clarification
+**DEBATABLE** (13): Design decisions that may or may not be bugs - needs spec clarification
 
 #### @mention/Command Issues (3 tests in test_mention_extraction_and_routing.py)
 
@@ -525,6 +528,14 @@ No validation in MCPRegistry - accepts None URLs, empty server names, incorrect 
 | `test_server_name_empty_string_accepted` | `server_name=""` | DEBATABLE | Builds URL ending in /mcp_servers/ |
 | `test_prefers_http_over_stdio` | Mixed connections | **CLEAR BUG** | stdio preferred over HTTP |
 
+#### URL Construction Issues (1 test in test_protocol_communication_flows.py)
+
+Trailing slash in registry_url not handled properly.
+
+| Failing Test | Input | Category | Issue |
+|--------------|-------|----------|-------|
+| `test_registry_url_trailing_slash_handled` | `registry_url="http://test/"` | DEBATABLE | Creates URL with // (e.g., http://test//lookup/agent) |
+
 ---
 
 ### Summary: Clear Bugs vs Debatable
@@ -532,4 +543,4 @@ No validation in MCPRegistry - accepts None URLs, empty server names, incorrect 
 | Category | Count | Examples |
 |----------|-------|----------|
 | **CLEAR BUGS** | 21 | No validation (10), empty lookups (2), malformed A2A responses (5), None→"None" (1), prefix parsing (3) |
-| **DEBATABLE** | 12 | Case/order sensitivity (2), type coercion (3), whitespace/empty (4), newline (1), port range (2) |
+| **DEBATABLE** | 13 | Case/order sensitivity (2), type coercion (3), whitespace/empty (4), newline (1), port range (2), URL trailing slash (1) |
