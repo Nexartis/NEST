@@ -10,14 +10,14 @@ Four-layer test strategy following Issue #7 specification.
 
 | Layer | Status | Passing | Failing (Bugs) | NotImplemented | Files |
 |-------|--------|---------|----------------|----------------|-------|
-| **Unit** | ⚠️ Partial | 130 | 18 | 5 | 5 files |
+| **Unit** | ⚠️ Partial | 126 | 24 | 5 | 5 files |
 | **Integration** | ✅ COMPLETE | 232 | 0 | 0 | 4 files |
 | **E2E** | ✅ COMPLETE | 191 | 0 | 0 | 9 files |
 | **Contract** | ⚠️ Partial | 46 | 0 | 27 | 3 files |
 
-**Total: 649 tests** (153 unit + 232 integration + 191 E2E + 73 contract)
-- **Passing: 599** (tests that verify implemented functionality)
-- **Failing: 18** (tests exposing library bugs - need fixes in nanda_core)
+**Total: 651 tests** (155 unit + 232 integration + 191 E2E + 73 contract)
+- **Passing: 595** (tests that verify implemented functionality)
+- **Failing: 24** (tests exposing library bugs - need fixes in nanda_core)
 - **NotImplementedError: 32** (tests for features not yet in nanda_core)
 
 ---
@@ -32,7 +32,7 @@ Four-layer test strategy following Issue #7 specification.
 | `test_protocol_router.py` | 21 | 11 | 0 | 5 routing patterns, priority, errors, **11 bug exposure tests** |
 | `test_agentfacts_parser.py` | 0 | 0 | 5 | ⏳ NOT IMPLEMENTED in nanda_core |
 | `test_mention_extraction_and_routing.py` | 53 | 3 | 0 | Standard/unicode formats, commands, edge cases |
-| `test_framework_adapters.py` | 31 | 0 | 0 | Required/optional params, formats |
+| `test_framework_adapters.py` | 38 | 6 | 0 | Params, validation, behavior, **6 bug exposure tests** |
 
 ### Detailed Breakdown
 
@@ -77,15 +77,17 @@ Tests REAL `SimpleAgentBridge` mention handling.
 - TestCommandUnknown (2) - unknown error, uppercase handling
 - TestCommandEdgeCases (5) - / only, / spaces, leading whitespace, //, **newline bug exposure test**
 
-#### Framework Adapters (31 tests)
+#### Framework Adapters (44 tests: 38 passing, 6 failing)
+Tests REAL `SimpleAgentBridge` initialization, validation, and behavior.
 - TestImportVerification (1) - SimpleAgentBridge importable
+- TestParameterValidationBugs (4) - **4 CLEAR BUG tests for no validation** (None, not callable, wrong signature)
 - TestRequiredParameters (2) - init with required params, callable agent_logic
-- TestOptionalParameterDefaults (4) - registry_url, mcp_registry_url, smithery_api_key, telemetry
-- TestOptionalParameterValues (4) - custom values stored correctly
+- TestOptionalParameters (2) - consolidated default/custom value tests
 - TestFullConfiguration (2) - all params, functional bridge
+- TestBehaviorVerification (4) - agent_logic called, return value used, agent_id in response
 - TestAgentIdFormats (7) - simple, hyphens, underscores, numbers, uppercase, mixed, dots
 - TestUrlFormats (5) - localhost, port, https, path, port+path
-- TestEdgeCases (6) - empty agent_id, long ID, empty URL, whitespace, unicode, special chars
+- TestEdgeCases (17) - **2 DEBATABLE** (empty/whitespace agent_id), long ID, unicode (12 languages)
 
 ---
 
@@ -399,7 +401,7 @@ pytest -m "not slow"     # Skip slow tests
 - [x] E2E tests for real library code (RegistryClient, MCPRegistry, MCPClient)
 
 ### ⚠️ Test Implementation Status (Honest Assessment)
-- [x] Unit Tests - 130 passing + 18 failing (bugs) + 5 NotImplementedError (AgentFacts)
+- [x] Unit Tests - 126 passing + 24 failing (bugs) + 5 NotImplementedError (AgentFacts)
 - [x] Integration Tests - 232 passing
 - [x] E2E Tests - 191 passing
 - [x] Contract Tests - 46 passing + 27 NotImplementedError (SLIM, x402)
@@ -407,9 +409,12 @@ pytest -m "not slow"     # Skip slow tests
 - [x] HTTP error code coverage (400, 401, 403, 404, 500, 502, 503)
 - [x] Unicode/edge case coverage (12 languages including RTL scripts)
 - [x] Real library code testing (not just mocks)
-- [x] Bug exposure tests - 18 tests that FAIL to expose library issues (11 clear bugs, 7 debatable)
+- [x] Bug exposure tests - 24 tests that FAIL to expose library issues (15 clear bugs, 9 debatable)
 - [x] Removed redundant tests, strengthened weak assertions
 - [x] Added 4 edge case tests for @mention separators and special character combinations
+- [x] Added parameter validation bug tests (agent_id=None, agent_logic=None, not callable)
+- [x] Added behavior verification tests (agent_logic called with correct params, return value used)
+- [x] Consolidated redundant optional parameter tests (8 tests → 2)
 
 ### Not Implemented in nanda_core (Tests Raise NotImplementedError)
 
@@ -430,12 +435,12 @@ pytest -m "not slow"     # Skip slow tests
 
 4. **x402 Protocol Not Implemented** (Issue #4): 17 contract tests raise NotImplementedError.
 
-### Library Issues Discovered Through Testing (18 Failing Tests)
+### Library Issues Discovered Through Testing (24 Failing Tests)
 
 These tests **FAIL** to expose potential issues in `nanda_core/core/agent_bridge.py`.
 
-**CLEAR BUGS** (11): Objectively wrong behavior - wasteful operations, malformed output
-**DEBATABLE** (7): Design decisions that may or may not be bugs - needs spec clarification
+**CLEAR BUGS** (15): Objectively wrong behavior - no validation, wasteful operations, malformed output
+**DEBATABLE** (9): Design decisions that may or may not be bugs - needs spec clarification
 
 #### @mention/Command Issues (3 tests in test_mention_extraction_and_routing.py)
 
@@ -477,11 +482,24 @@ All **CLEAR BUGS** - produce malformed responses like `Response to : ` with dang
 | `test_agent_logic_returns_list_handled` | `["item1"]` | DEBATABLE | Shows Python repr - ugly but works |
 | `test_agent_logic_returns_dict_handled` | `{"k": "v"}` | DEBATABLE | Shows Python repr - ugly but works |
 
+#### Parameter Validation Issues (6 tests in test_framework_adapters.py)
+
+No validation at init time - library accepts invalid parameters and fails gracefully at use time.
+
+| Failing Test | Input | Category | Issue |
+|--------------|-------|----------|-------|
+| `test_agent_id_none_accepted_no_validation` | `agent_id=None` | **CLEAR BUG** | None accepted, creates broken bridge |
+| `test_agent_logic_none_fails_at_use` | `agent_logic=None` | **CLEAR BUG** | None accepted, error at use time |
+| `test_agent_logic_not_callable_fails_at_use` | `agent_logic="string"` | **CLEAR BUG** | Non-callable accepted, error at use |
+| `test_agent_logic_wrong_signature_fails_at_use` | `def f(): ...` | **CLEAR BUG** | Wrong signature accepted, error at use |
+| `test_empty_string_agent_id` | `agent_id=""` | DEBATABLE | Creates "[] Response" - awkward |
+| `test_whitespace_only_agent_id` | `agent_id="   "` | DEBATABLE | Creates "[   ] Response" - confusing |
+
 ---
 
 ### Summary: Clear Bugs vs Debatable
 
 | Category | Count | Examples |
 |----------|-------|----------|
-| **CLEAR BUGS** | 11 | Empty lookups (2), malformed A2A responses (5), None→"None" (1), prefix parsing (3) |
-| **DEBATABLE** | 7 | Case/order sensitivity (2), type coercion (3), whitespace (1), newline (1) |
+| **CLEAR BUGS** | 15 | No validation (4), empty lookups (2), malformed A2A responses (5), None→"None" (1), prefix parsing (3) |
+| **DEBATABLE** | 9 | Case/order sensitivity (2), type coercion (3), whitespace/empty (3), newline (1) |
