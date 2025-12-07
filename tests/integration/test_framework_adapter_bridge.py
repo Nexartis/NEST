@@ -70,6 +70,182 @@ def mock_http_response():
 
 
 # =============================================================================
+# Tests: Parameter Validation Bugs (CLEAR BUGS)
+# =============================================================================
+
+class TestParameterValidationBugs:
+    """
+    Tests exposing CLEAR BUGS in NANDA parameter validation.
+
+    These tests FAIL because the library accepts invalid parameters at init time
+    and only fails later at use time (or creates silently broken instances).
+    """
+
+    def test_agent_id_none_accepted_no_validation(self, sample_agent_logic):
+        """
+        CLEAR BUG: NANDA accepts agent_id=None without validation.
+
+        Given: agent_id=None (invalid)
+        When: NANDA created
+        Then: Should raise ValueError at init, but doesn't
+        """
+        nanda = NANDA(
+            agent_id=None,
+            agent_logic=sample_agent_logic,
+            enable_telemetry=False
+        )
+
+        assert nanda.agent_id is not None, (
+            "CLEAR BUG: NANDA accepted agent_id=None. "
+            f"Got: agent_id={nanda.agent_id}. "
+            "Cause: No validation in __init__. "
+            "Fix: Add 'if not agent_id: raise ValueError(\"agent_id required\")'"
+        )
+
+    def test_agent_logic_none_fails_at_use_time(self, sample_agent_logic):
+        """
+        CLEAR BUG: NANDA accepts agent_logic=None at init, fails at message time.
+
+        Given: agent_logic=None (invalid)
+        When: NANDA created and message sent
+        Then: Should raise ValueError at init, but fails at use time instead
+        """
+        from python_a2a import Message, TextContent, MessageRole
+
+        nanda = NANDA(
+            agent_id="test",
+            agent_logic=None,
+            enable_telemetry=False
+        )
+
+        # Init succeeded (bug), now try to use it
+        msg = Message(content=TextContent(text="hello"), role=MessageRole.USER)
+        response = nanda.bridge.handle_message(msg)
+
+        assert "NoneType" not in response.content.text and "Error" not in response.content.text, (
+            "CLEAR BUG: agent_logic=None accepted at init, failed at use. "
+            f"Got response: '{response.content.text}'. "
+            "Cause: No validation in __init__. "
+            "Fix: Add 'if agent_logic is None: raise ValueError(\"agent_logic required\")'"
+        )
+
+    def test_agent_logic_not_callable_fails_at_use_time(self, sample_agent_logic):
+        """
+        CLEAR BUG: NANDA accepts non-callable agent_logic, fails at message time.
+
+        Given: agent_logic="not a function" (invalid)
+        When: NANDA created and message sent
+        Then: Should raise TypeError at init, but fails at use time instead
+        """
+        from python_a2a import Message, TextContent, MessageRole
+
+        nanda = NANDA(
+            agent_id="test",
+            agent_logic="I am not callable",
+            enable_telemetry=False
+        )
+
+        # Init succeeded (bug), now try to use it
+        msg = Message(content=TextContent(text="hello"), role=MessageRole.USER)
+        response = nanda.bridge.handle_message(msg)
+
+        assert "not callable" not in response.content.text.lower() and "Error" not in response.content.text, (
+            "CLEAR BUG: Non-callable agent_logic accepted at init. "
+            f"Got response: '{response.content.text}'. "
+            "Cause: No callable check in __init__. "
+            "Fix: Add 'if not callable(agent_logic): raise TypeError(\"agent_logic must be callable\")'"
+        )
+
+    def test_agent_logic_wrong_signature_fails_at_use_time(self, sample_agent_logic):
+        """
+        CLEAR BUG: NANDA accepts agent_logic with wrong signature.
+
+        Given: agent_logic takes 0 args (should take 2)
+        When: NANDA created and message sent
+        Then: Should validate signature at init, but fails at use time
+        """
+        from python_a2a import Message, TextContent, MessageRole
+
+        def no_args_logic():
+            return "I take no arguments"
+
+        nanda = NANDA(
+            agent_id="test",
+            agent_logic=no_args_logic,
+            enable_telemetry=False
+        )
+
+        msg = Message(content=TextContent(text="hello"), role=MessageRole.USER)
+        response = nanda.bridge.handle_message(msg)
+
+        assert "argument" not in response.content.text.lower() and "Error" not in response.content.text, (
+            "CLEAR BUG: agent_logic with wrong signature accepted. "
+            f"Got response: '{response.content.text}'. "
+            "Cause: No signature validation in __init__. "
+            "Fix: Use inspect.signature to validate agent_logic takes 2 params"
+        )
+
+
+# =============================================================================
+# Tests: Port Validation (DEBATABLE)
+# =============================================================================
+
+class TestPortValidation:
+    """
+    Tests for port number validation.
+
+    These are DEBATABLE - negative ports and out-of-range ports could be
+    rejected, but the OS will ultimately reject them at bind time anyway.
+    """
+
+    def test_negative_port_accepted(self, sample_agent_logic):
+        """
+        DEBATABLE: NANDA accepts port=-1 without validation.
+
+        Given: port=-1 (invalid)
+        When: NANDA created
+        Then: Library stores it; will fail at server start
+
+        Note: OS will reject at bind time, but earlier validation is friendlier.
+        """
+        nanda = NANDA(
+            agent_id="test",
+            agent_logic=sample_agent_logic,
+            port=-1,
+            enable_telemetry=False
+        )
+
+        assert nanda.port >= 0, (
+            "DEBATABLE: port=-1 accepted. Will fail at server start. "
+            f"Got: port={nanda.port}. "
+            "Cause: No port range validation. "
+            "Fix: Add 'if not (0 <= port <= 65535): raise ValueError(...)'"
+        )
+
+    def test_port_above_max_accepted(self, sample_agent_logic):
+        """
+        DEBATABLE: NANDA accepts port=70000 (above max 65535).
+
+        Given: port=70000 (invalid - max is 65535)
+        When: NANDA created
+        Then: Library stores it; will fail at server start
+        """
+        nanda = NANDA(
+            agent_id="test",
+            agent_logic=sample_agent_logic,
+            port=70000,
+            enable_telemetry=False
+        )
+
+        assert nanda.port <= 65535, (
+            "DEBATABLE: port=70000 accepted (max valid is 65535). "
+            f"Got: port={nanda.port}. "
+            "Cause: No port range validation. "
+            "Fix: Add 'if port > 65535: raise ValueError(...)'"
+        )
+
+
+# =============================================================================
 # Tests: NANDA Initialization
 # =============================================================================
 
@@ -269,7 +445,7 @@ class TestBridgeCreation:
         """
         Given: NANDA with mcp_registry_url
         When: Bridge is created
-        Then: Bridge has mcp_registry_url for MCP server discovery
+        Then: Bridge.mcp_registry_url stores the URL for MCP server discovery
         """
         nanda = NANDA(
             agent_id="agent",
@@ -278,10 +454,11 @@ class TestBridgeCreation:
             enable_telemetry=False
         )
 
-        # Verify MCP registry URL is accessible through bridge's mcp_registry
-        assert hasattr(nanda.bridge, 'mcp_registry') or hasattr(nanda.bridge, 'mcp_registry_url'), (
-            "Expected bridge to have MCP registry configuration. "
-            "Cause: mcp_registry_url not passed to bridge. "
+        # Verify MCP registry URL is actually passed to bridge
+        assert nanda.bridge.mcp_registry_url == "http://mcp.registry.test", (
+            f"Expected bridge.mcp_registry_url='http://mcp.registry.test'. "
+            f"Got: '{nanda.bridge.mcp_registry_url}'. "
+            "Cause: mcp_registry_url not passed to SimpleAgentBridge. "
             "Fix: Pass mcp_registry_url to SimpleAgentBridge()"
         )
 
@@ -289,20 +466,22 @@ class TestBridgeCreation:
         """
         Given: NANDA with smithery_api_key
         When: Bridge is created
-        Then: Bridge has smithery_api_key for authenticated MCP lookups
+        Then: Bridge.smithery_api_key stores the key for authenticated lookups
         """
         nanda = NANDA(
             agent_id="agent",
             agent_logic=sample_agent_logic,
+            mcp_registry_url="http://mcp.test",
             smithery_api_key="sk-test-key-123",
             enable_telemetry=False
         )
 
-        # Bridge should have received the key (via MCP registry or direct)
-        assert nanda.bridge is not None, (
-            "Expected bridge to be created with smithery config. "
-            "Cause: Bridge creation failed. "
-            "Fix: Ensure SimpleAgentBridge accepts smithery_api_key"
+        # Verify API key is passed through to bridge
+        assert nanda.bridge.smithery_api_key == "sk-test-key-123", (
+            f"Expected bridge.smithery_api_key='sk-test-key-123'. "
+            f"Got: '{nanda.bridge.smithery_api_key}'. "
+            "Cause: smithery_api_key not passed to SimpleAgentBridge. "
+            "Fix: Pass smithery_api_key to SimpleAgentBridge()"
         )
 
     def test_bridge_handles_messages_using_agent_logic(self, sample_agent_logic):
@@ -339,6 +518,139 @@ class TestBridgeCreation:
             f"Expected agent_logic output in response. Got: '{response.content.text}'. "
             f"Cause: agent_logic not invoked or output not used. "
             f"Fix: Call agent_logic(message, conversation_id) in handle_message()"
+        )
+
+
+# =============================================================================
+# Tests: Behavior Verification
+# =============================================================================
+
+class TestBehaviorVerification:
+    """
+    Tests verifying that stored values are actually USED, not just stored.
+
+    These tests go beyond storage verification to ensure the bridge
+    actually uses the configured values in its output.
+    """
+
+    def test_agent_id_appears_in_response(self, sample_agent_logic):
+        """
+        Given: NANDA with agent_id="my-special-agent"
+        When: Message processed
+        Then: Response contains agent_id prefix [my-special-agent]
+        """
+        from python_a2a import Message, TextContent, MessageRole
+
+        nanda = NANDA(
+            agent_id="my-special-agent",
+            agent_logic=sample_agent_logic,
+            enable_telemetry=False
+        )
+
+        msg = Message(content=TextContent(text="test"), role=MessageRole.USER)
+        response = nanda.bridge.handle_message(msg)
+
+        assert "my-special-agent" in response.content.text, (
+            f"Expected agent_id in response. Got: '{response.content.text}'. "
+            "Cause: agent_id not used in response formatting. "
+            "Fix: Include agent_id prefix in response"
+        )
+
+    def test_agent_logic_return_value_in_response(self, sample_agent_logic):
+        """
+        Given: agent_logic that returns "CUSTOM_OUTPUT_12345"
+        When: Message processed
+        Then: Response contains exact output from agent_logic
+        """
+        from python_a2a import Message, TextContent, MessageRole
+
+        def custom_logic(msg, conv):
+            return "CUSTOM_OUTPUT_12345"
+
+        nanda = NANDA(
+            agent_id="test",
+            agent_logic=custom_logic,
+            enable_telemetry=False
+        )
+
+        msg = Message(content=TextContent(text="anything"), role=MessageRole.USER)
+        response = nanda.bridge.handle_message(msg)
+
+        assert "CUSTOM_OUTPUT_12345" in response.content.text, (
+            f"Expected agent_logic output in response. Got: '{response.content.text}'. "
+            "Cause: agent_logic return value not used. "
+            "Fix: Include agent_logic output in response"
+        )
+
+    def test_conversation_id_passed_to_agent_logic(self, sample_agent_logic):
+        """
+        Given: Message with conversation_id="conv-abc-123"
+        When: Message processed
+        Then: agent_logic receives the conversation_id
+        """
+        from python_a2a import Message, TextContent, MessageRole
+
+        received_conv_id = []
+
+        def capturing_logic(msg, conv):
+            received_conv_id.append(conv)
+            return "OK"
+
+        nanda = NANDA(
+            agent_id="test",
+            agent_logic=capturing_logic,
+            enable_telemetry=False
+        )
+
+        msg = Message(
+            content=TextContent(text="test"),
+            role=MessageRole.USER,
+            conversation_id="conv-abc-123"
+        )
+        nanda.bridge.handle_message(msg)
+
+        assert len(received_conv_id) == 1, (
+            "Expected agent_logic to be called once. "
+            f"Got: {len(received_conv_id)} calls. "
+            "Cause: agent_logic not invoked. "
+            "Fix: Call agent_logic in handle_message()"
+        )
+        assert received_conv_id[0] == "conv-abc-123", (
+            f"Expected conversation_id='conv-abc-123'. Got: '{received_conv_id[0]}'. "
+            "Cause: conversation_id not passed to agent_logic. "
+            "Fix: Pass msg.conversation_id to agent_logic"
+        )
+
+    def test_message_text_passed_to_agent_logic(self, sample_agent_logic):
+        """
+        Given: Message with text="UNIQUE_MESSAGE_TEXT_XYZ"
+        When: Message processed
+        Then: agent_logic receives the exact message text
+        """
+        from python_a2a import Message, TextContent, MessageRole
+
+        received_messages = []
+
+        def capturing_logic(msg, conv):
+            received_messages.append(msg)
+            return "OK"
+
+        nanda = NANDA(
+            agent_id="test",
+            agent_logic=capturing_logic,
+            enable_telemetry=False
+        )
+
+        msg = Message(
+            content=TextContent(text="UNIQUE_MESSAGE_TEXT_XYZ"),
+            role=MessageRole.USER
+        )
+        nanda.bridge.handle_message(msg)
+
+        assert "UNIQUE_MESSAGE_TEXT_XYZ" in received_messages[0], (
+            f"Expected message text passed to agent_logic. Got: '{received_messages[0]}'. "
+            "Cause: Message text not extracted correctly. "
+            "Fix: Extract msg.content.text for agent_logic"
         )
 
 
@@ -825,44 +1137,32 @@ class TestTelemetryIntegration:
 class TestInputValidation:
     """Tests for invalid inputs - verifies behavior doesn't crash."""
 
-    def test_accepts_empty_string_agent_id(self, sample_agent_logic):
+    @pytest.mark.parametrize("agent_id,description", [
+        ("", "empty string"),
+        ("   ", "whitespace only"),
+    ])
+    def test_empty_or_whitespace_agent_id_accepted(self, agent_id, description, sample_agent_logic):
         """
-        Given: agent_id="" (empty string)
-        When: NANDA created
-        Then: Stores empty string (no validation currently)
+        DEBATABLE: NANDA accepts empty/whitespace agent_id without validation.
 
-        Note: This documents current behavior. Consider adding validation.
+        Given: agent_id is {description}
+        When: NANDA created
+        Then: Stores as-is (no validation)
+
+        Note: Could be intentional (flexible) or bug (should validate).
+        Response will show "[] Response" or "[   ] Response" - confusing.
         """
         nanda = NANDA(
-            agent_id="",
+            agent_id=agent_id,
             agent_logic=sample_agent_logic,
             enable_telemetry=False
         )
 
-        assert nanda.agent_id == "", (
-            f"Expected empty agent_id stored. Got: '{nanda.agent_id}'. "
-            f"Cause: agent_id modified unexpectedly. "
-            f"Fix: Store agent_id as-is or add explicit validation"
-        )
-
-    def test_accepts_whitespace_only_agent_id(self, sample_agent_logic):
-        """
-        Given: agent_id="   " (whitespace only)
-        When: NANDA created
-        Then: Stores as-is (no stripping/validation currently)
-
-        Note: This documents current behavior. Consider adding validation.
-        """
-        nanda = NANDA(
-            agent_id="   ",
-            agent_logic=sample_agent_logic,
-            enable_telemetry=False
-        )
-
-        assert nanda.agent_id == "   ", (
-            f"Expected whitespace agent_id stored. Got: '{nanda.agent_id}'. "
-            f"Cause: Whitespace stripped or modified. "
-            f"Fix: Store as-is or add explicit validation with clear error"
+        assert nanda.agent_id == agent_id, (
+            f"Expected agent_id='{agent_id}' ({description}) stored. "
+            f"Got: '{nanda.agent_id}'. "
+            f"Cause: agent_id modified. "
+            f"Fix: Store as-is or add validation"
         )
 
     def test_accepts_very_long_agent_id(self, sample_agent_logic):

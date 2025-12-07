@@ -11,13 +11,13 @@ Four-layer test strategy following Issue #7 specification.
 | Layer | Status | Passing | Failing (Bugs) | NotImplemented | Files |
 |-------|--------|---------|----------------|----------------|-------|
 | **Unit** | ⚠️ Partial | 126 | 24 | 5 | 5 files |
-| **Integration** | ✅ COMPLETE | 232 | 0 | 0 | 4 files |
+| **Integration** | ⚠️ Partial | 236 | 6 | 0 | 4 files |
 | **E2E** | ✅ COMPLETE | 191 | 0 | 0 | 9 files |
 | **Contract** | ⚠️ Partial | 46 | 0 | 27 | 3 files |
 
-**Total: 651 tests** (155 unit + 232 integration + 191 E2E + 73 contract)
-- **Passing: 595** (tests that verify implemented functionality)
-- **Failing: 24** (tests exposing library bugs - need fixes in nanda_core)
+**Total: 661 tests** (155 unit + 242 integration + 191 E2E + 73 contract)
+- **Passing: 599** (tests that verify implemented functionality)
+- **Failing: 30** (tests exposing library bugs - need fixes in nanda_core)
 - **NotImplementedError: 32** (tests for features not yet in nanda_core)
 
 ---
@@ -90,16 +90,16 @@ Tests REAL `SimpleAgentBridge` initialization, validation, and behavior.
 
 ---
 
-## Layer 2: Integration Tests (COMPLETE)
+## Layer 2: Integration Tests (PARTIAL - 6 bug exposure tests)
 
 ### Files and Test Counts
 
-| File | Tests | Coverage |
-|------|-------|----------|
-| `test_protocol_communication_flows.py` | 31 | A2A routing, registry lookup, message sending |
-| `test_registry_client.py` | 82 | Registration, lookup, search, health, HTTP errors, Unicode (14 languages) |
-| `test_mcp_integration.py` | 37 | NANDA/Smithery lookups, URL building, MCP client |
-| `test_framework_adapter_bridge.py` | 71 | NANDA adapter, bridge creation, lifecycle, HTTP errors, Unicode (12 languages) |
+| File | Tests | Failing | Coverage |
+|------|-------|---------|----------|
+| `test_protocol_communication_flows.py` | 31 | 0 | A2A routing, registry lookup, message sending |
+| `test_registry_client.py` | 82 | 0 | Registration, lookup, search, health, HTTP errors, Unicode (14 languages) |
+| `test_mcp_integration.py` | 37 | 0 | NANDA/Smithery lookups, URL building, MCP client |
+| `test_framework_adapter_bridge.py` | 81 | 6 | NANDA adapter, bridge creation, lifecycle, **6 bug exposure tests** |
 
 ### Detailed Breakdown
 
@@ -135,14 +135,17 @@ Tests REAL `SimpleAgentBridge` initialization, validation, and behavior.
 - TestMCPRegistryEdgeCases (5) - timeout, invalid JSON, empty config, chained lookups, case sensitivity
 - TestMCPClientResultParsing (8) - dict results, list results, string results, JSON formatting
 
-#### Framework Adapter Bridge (71 tests)
+#### Framework Adapter Bridge (81 tests: 75 passing, 6 failing)
+- TestParameterValidationBugs (4) - **4 CLEAR BUG tests** (agent_id=None, agent_logic=None, not callable, wrong signature)
+- TestPortValidation (2) - **2 DEBATABLE tests** (port=-1, port=70000)
 - TestNANDAInitialization (3) - required params, optional params, defaults
 - TestBridgeCreation (6) - agent_id passing, registry_url, MCP config, smithery key, message handling
+- TestBehaviorVerification (4) - agent_id in response, agent_logic output, conversation_id passed, message text passed
 - TestRegistryRegistration (12) - POST endpoint, body construction, timeout, HTTP 4xx/5xx errors (7 codes), connection error, timeout error
 - TestServerLifecycle (7) - start with registration, start without, URL validation, run_server params, stop cleanup
 - TestTelemetryIntegration (3) - disable behavior, flag storage, import failure handling
-- TestInputValidation (6) - empty agent_id, whitespace, long ID, empty URL, lambda, class method
-- TestEdgeCases (34) - 7 agent_id formats, 12 unicode formats (Korean, Arabic, Hebrew, Thai, Hindi, etc.), 7 port values, 6 URL formats
+- TestInputValidation (5) - empty/whitespace agent_id (consolidated), long ID, empty URL, lambda, class method
+- TestEdgeCases (35) - 7 agent_id formats, 12 unicode formats, 7 port values, 6 URL formats, argument verification
 
 ### Test Quality Improvements Applied
 - All 409 tests have **Expected/Got/Cause/Fix** error message format
@@ -435,12 +438,12 @@ pytest -m "not slow"     # Skip slow tests
 
 4. **x402 Protocol Not Implemented** (Issue #4): 17 contract tests raise NotImplementedError.
 
-### Library Issues Discovered Through Testing (24 Failing Tests)
+### Library Issues Discovered Through Testing (30 Failing Tests)
 
-These tests **FAIL** to expose potential issues in `nanda_core/core/agent_bridge.py`.
+These tests **FAIL** to expose potential issues in `nanda_core/core/agent_bridge.py` and `nanda_core/core/adapter.py`.
 
-**CLEAR BUGS** (15): Objectively wrong behavior - no validation, wasteful operations, malformed output
-**DEBATABLE** (9): Design decisions that may or may not be bugs - needs spec clarification
+**CLEAR BUGS** (19): Objectively wrong behavior - no validation, wasteful operations, malformed output
+**DEBATABLE** (11): Design decisions that may or may not be bugs - needs spec clarification
 
 #### @mention/Command Issues (3 tests in test_mention_extraction_and_routing.py)
 
@@ -495,11 +498,24 @@ No validation at init time - library accepts invalid parameters and fails gracef
 | `test_empty_string_agent_id` | `agent_id=""` | DEBATABLE | Creates "[] Response" - awkward |
 | `test_whitespace_only_agent_id` | `agent_id="   "` | DEBATABLE | Creates "[   ] Response" - confusing |
 
+#### NANDA Adapter Issues (6 tests in test_framework_adapter_bridge.py)
+
+No validation at init time in NANDA class - passes invalid params to SimpleAgentBridge.
+
+| Failing Test | Input | Category | Issue |
+|--------------|-------|----------|-------|
+| `test_agent_id_none_accepted_no_validation` | `agent_id=None` | **CLEAR BUG** | None accepted, creates broken NANDA |
+| `test_agent_logic_none_fails_at_use_time` | `agent_logic=None` | **CLEAR BUG** | None accepted, fails at message time |
+| `test_agent_logic_not_callable_fails_at_use_time` | `agent_logic="string"` | **CLEAR BUG** | Non-callable accepted, fails at use |
+| `test_agent_logic_wrong_signature_fails_at_use_time` | `def f(): ...` | **CLEAR BUG** | Wrong signature accepted, fails at use |
+| `test_negative_port_accepted` | `port=-1` | DEBATABLE | Invalid port accepted, fails at server start |
+| `test_port_above_max_accepted` | `port=70000` | DEBATABLE | Out of range port accepted |
+
 ---
 
 ### Summary: Clear Bugs vs Debatable
 
 | Category | Count | Examples |
 |----------|-------|----------|
-| **CLEAR BUGS** | 15 | No validation (4), empty lookups (2), malformed A2A responses (5), None→"None" (1), prefix parsing (3) |
-| **DEBATABLE** | 9 | Case/order sensitivity (2), type coercion (3), whitespace/empty (3), newline (1) |
+| **CLEAR BUGS** | 19 | No validation (8), empty lookups (2), malformed A2A responses (5), None→"None" (1), prefix parsing (3) |
+| **DEBATABLE** | 11 | Case/order sensitivity (2), type coercion (3), whitespace/empty (3), newline (1), port range (2) |
