@@ -226,6 +226,25 @@ class TestHashPrefixRouting:
             f"Fix: Return descriptive error in _handle_mcp_message()"
         )
 
+    def test_double_hash_parsed_correctly(self, bridge, sample_text_message):
+        """
+        Given: "##smithery:weather query" (double hash)
+        When: Processing
+        Then: Should parse as #smithery:weather, not look up "#smithery" registry
+
+        CLEAR BUG: Library includes first # in registry name.
+        """
+        response = bridge.handle_message(sample_text_message("##smithery:weather query"))
+
+        response_text = response.content.text
+        # Should NOT include "#smithery" as registry name
+        assert "#smithery" not in response_text, (
+            f"Double hash should strip leading #. "
+            f"Got: '{response_text}'. "
+            f"Cause: _handle_mcp_message() doesn't handle ## prefix. "
+            f"Fix: Strip leading # before parsing registry:server"
+        )
+
 
 # =============================================================================
 # Tests: / Prefix Routing (System Commands)
@@ -279,6 +298,45 @@ class TestSlashPrefixRouting:
             f"Expected 'unknown command' message. Got: '{response.content.text}'. "
             f"Cause: Unknown command handling missing. "
             f"Fix: Check default case in _handle_command()"
+        )
+
+    def test_double_slash_parsed_correctly(self, bridge, sample_text_message):
+        """
+        Given: "//help" (double slash)
+        When: Processing
+        Then: Should execute /help command, not treat "/help" as command name
+
+        CLEAR BUG: Library includes second / in command name.
+        Returns "Unknown command: /help" instead of executing help.
+        """
+        response = bridge.handle_message(sample_text_message("//help"))
+
+        response_text = response.content.text.lower()
+        # Should execute help command, not say "unknown command: /help"
+        assert "unknown command: /help" not in response_text, (
+            f"Double slash should execute the command. "
+            f"Got: '{response.content.text}'. "
+            f"Cause: _handle_command() doesn't strip leading /. "
+            f"Fix: Use `command = text.lstrip('/').split()[0]`"
+        )
+
+    def test_slash_alone_returns_helpful_error(self, bridge, sample_text_message):
+        """
+        Given: "/" alone
+        When: Processing
+        Then: Should return helpful error, not "Unknown command: ."
+
+        CLEAR BUG: Library shows "Unknown command: ." which is confusing.
+        """
+        response = bridge.handle_message(sample_text_message("/"))
+
+        response_text = response.content.text
+        # Should NOT show "Unknown command: ." (confusing)
+        assert "command: ." not in response_text, (
+            f"Slash alone should show helpful error, not 'command: .'. "
+            f"Got: '{response_text}'. "
+            f"Cause: Empty command after / not handled. "
+            f"Fix: Add `if not command: return 'Use /help for commands'`"
         )
 
 
@@ -355,8 +413,13 @@ class TestIncomingA2ARouting:
         )
 
     # -------------------------------------------------------------------------
-    # BUG EXPOSURE TESTS - These tests FAIL to expose library bugs
+    # BUG EXPOSURE TESTS
+    #
+    # CLEAR BUGS: Objectively wrong behavior (wasteful operations, malformed output)
+    # DEBATABLE: Design decisions that may or may not be bugs (needs spec clarification)
     # -------------------------------------------------------------------------
+
+    # --- CLEAR BUGS: Empty field validation produces malformed responses ---
 
     def test_empty_from_field_returns_error(self, bridge, sample_text_message):
         """
@@ -443,11 +506,14 @@ class TestIncomingA2ARouting:
             f"Fix: Use `recipient.strip()` and validate non-empty after stripping."
         )
 
+    # --- DEBATABLE: Case sensitivity and field order (may be by design) ---
+
     def test_lowercase_a2a_format_detected(self, bridge, sample_text_message):
         """
         Expected: Lowercase from:/to:/message: should be detected as A2A format.
 
-        BUG: Library only detects uppercase FROM:/TO:/MESSAGE: (case-sensitive).
+        DEBATABLE: Library only detects uppercase FROM:/TO:/MESSAGE:.
+        Could be by design if protocol spec requires uppercase.
         """
         a2a_message = "from: sender\nto: test-agent\nmessage: hello"
         response = bridge.handle_message(sample_text_message(a2a_message))
@@ -465,7 +531,8 @@ class TestIncomingA2ARouting:
         """
         Expected: TO/FROM/MESSAGE order should be detected as A2A format.
 
-        BUG: Library only detects FROM/TO/MESSAGE order.
+        DEBATABLE: Library only detects FROM/TO/MESSAGE order.
+        Could be by design if protocol spec requires specific order.
         """
         a2a_message = "TO: test-agent\nFROM: sender\nMESSAGE: hello"
         response = bridge.handle_message(sample_text_message(a2a_message))
@@ -479,11 +546,14 @@ class TestIncomingA2ARouting:
             f"Fix: Parse fields by searching for 'FROM:', 'TO:', 'MESSAGE:' anywhere."
         )
 
+    # --- CLEAR BUG: Empty MCP server lookup is wasteful ---
+
     def test_mcp_empty_server_returns_invalid_format(self, bridge, sample_text_message):
         """
         Expected: Empty server name should return "Invalid format" error.
 
-        BUG: Library tries to lookup empty server name.
+        CLEAR BUG: Library tries to lookup empty server name ''.
+        Wasteful API call that will always fail.
         """
         response = bridge.handle_message(sample_text_message("#registry: query"))
 

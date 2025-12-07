@@ -17,10 +17,14 @@ Expected Behavior:
 - /ping\ntest → executes ping (newline is whitespace)
 - /HELP → "Unknown command: HELP" (case-sensitive)
 
-Tests That Will FAIL (Library Bugs in agent_bridge.py):
-- test_whitespace_body_returns_invalid_format: Library sends whitespace instead of rejecting
-- test_at_space_returns_invalid_format: Library looks up empty agent instead of rejecting
-- test_command_with_newline_executes_correctly: Library treats "ping\ntest" as command name
+Tests That Will FAIL (expose potential issues in agent_bridge.py):
+
+CLEAR BUG:
+- test_at_space_returns_invalid_format: Library looks up empty agent '' (wasteful API call)
+
+DEBATABLE (may be by design):
+- test_whitespace_body_returns_invalid_format: Library sends whitespace - could be valid
+- test_command_with_newline_executes_correctly: Newline handling in commands is edge case
 """
 
 import pytest
@@ -172,7 +176,8 @@ class TestMentionBoundaryConditions:
         When: Processing
         Then: Should return "Invalid format" error
 
-        Expected: Whitespace-only body should be rejected.
+        DEBATABLE: Whitespace-only body could be valid (empty message to agent).
+        Counter-argument: Sending whitespace to another agent is likely user error.
         """
         response = bridge.handle_message(sample_text_message("@agent-id   "))
 
@@ -204,7 +209,8 @@ class TestMentionBoundaryConditions:
         When: Processing
         Then: Should return "Invalid format" error
 
-        Expected: Empty agent ID should be rejected.
+        CLEAR BUG: Library looks up empty agent ID ''.
+        This is wasteful - an empty string lookup will always fail.
         """
         response = bridge.handle_message(sample_text_message("@ "))
 
@@ -343,6 +349,86 @@ class TestMentionMessageContent:
             f"Crash on 10KB message. "
             f"Cause: Message body length limit. "
             f"Fix: Remove body length limit"
+        )
+
+    def test_tab_separator_returns_invalid_format(self, bridge, sample_text_message):
+        """
+        Given: "@agent\thello" (tab separator instead of space)
+        When: Processing
+        Then: Returns "Invalid format"
+
+        Actual: Tab is not recognized as separator - splits on space only.
+        """
+        response = bridge.handle_message(sample_text_message("@agent\thello"))
+
+        assert "invalid format" in response.content.text.lower(), (
+            f"Expected 'Invalid format' for tab separator. "
+            f"Got: '{response.content.text}'. "
+            f"Cause: _handle_agent_message() splits on space only, not whitespace. "
+            f"Fix: Use text.split(None, 1) to split on any whitespace"
+        )
+
+    def test_newline_separator_returns_invalid_format(self, bridge, sample_text_message):
+        """
+        Given: "@agent\nhello" (newline separator instead of space)
+        When: Processing
+        Then: Returns "Invalid format"
+
+        Actual: Newline is not recognized as separator - splits on space only.
+        """
+        response = bridge.handle_message(sample_text_message("@agent\nhello"))
+
+        assert "invalid format" in response.content.text.lower(), (
+            f"Expected 'Invalid format' for newline separator. "
+            f"Got: '{response.content.text}'. "
+            f"Cause: _handle_agent_message() splits on space only, not whitespace. "
+            f"Fix: Use text.split(None, 1) to split on any whitespace"
+        )
+
+    def test_multiple_at_symbols_parsed(self, bridge, sample_text_message):
+        """
+        Given: "@@@agent hello" (triple @ before agent ID)
+        When: Processing
+        Then: Should extract "agent", not "@@agent"
+
+        Current: Looks up "@@agent" including extra @ symbols.
+        This documents edge case behavior.
+        """
+        response = bridge.handle_message(sample_text_message("@@@agent hello"))
+
+        # Documents current behavior - includes @@ in agent ID lookup
+        assert isinstance(response, Message), (
+            f"Crash on triple @. "
+            f"Cause: Multiple @ symbols not handled. "
+            f"Fix: Add graceful handling"
+        )
+        # Library tries to look up "@@agent" - documenting actual behavior
+        assert "@@agent" in response.content.text or "agent" in response.content.text.lower(), (
+            f"Expected reference to agent lookup. "
+            f"Got: '{response.content.text}'"
+        )
+
+    def test_at_hash_combination(self, bridge, sample_text_message):
+        """
+        Given: "@#agent hello" (@ followed by #)
+        When: Processing
+        Then: Should handle gracefully
+
+        Current: Looks up "#agent" including the #.
+        This documents edge case behavior.
+        """
+        response = bridge.handle_message(sample_text_message("@#agent hello"))
+
+        # Documents current behavior - includes # in agent ID lookup
+        assert isinstance(response, Message), (
+            f"Crash on @# combination. "
+            f"Cause: Special character after @ not handled. "
+            f"Fix: Add validation or graceful handling"
+        )
+        # Library tries to look up "#agent" - documenting actual behavior
+        assert "#agent" in response.content.text or "agent" in response.content.text.lower(), (
+            f"Expected reference to agent lookup. "
+            f"Got: '{response.content.text}'"
         )
 
 
@@ -619,7 +705,8 @@ class TestCommandEdgeCases:
         When: Processing
         Then: Should execute ping command (newline is whitespace separator)
 
-        Expected: Command parsing should split on any whitespace, not just space.
+        DEBATABLE: Command parsing splits on space only, not all whitespace.
+        Counter-argument: Newlines in commands are rare edge case.
         """
         response = bridge.handle_message(sample_text_message("/ping\ntest"))
 

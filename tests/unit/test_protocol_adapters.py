@@ -92,7 +92,7 @@ class TestA2AMessageFormatting:
         """
         Given: A message with non-TextContent
         When: Bridge processes it
-        Then: Response indicates text-only support
+        Then: Response indicates "Only text messages supported"
         """
         mock_msg = Mock()
         mock_msg.content = Mock()
@@ -103,9 +103,10 @@ class TestA2AMessageFormatting:
         response = bridge.handle_message(mock_msg)
 
         response_lower = response.content.text.lower()
-        assert "text" in response_lower or "supported" in response_lower, (
-            f"Expected error about text support, got: '{response.content.text}'. "
-            f"Fix: Check content type validation in handle_message()"
+        assert "only text" in response_lower or "text messages" in response_lower, (
+            f"Expected 'Only text messages supported'. Got: '{response.content.text}'. "
+            f"Cause: Non-TextContent validation message changed or missing. "
+            f"Fix: Return 'Only text messages supported' in handle_message()"
         )
 
 
@@ -307,4 +308,109 @@ class TestA2AEdgeCases:
         assert "  Indented" in response.content.text, (
             f"Indentation not preserved. "
             f"Fix: Ensure no whitespace normalization"
+        )
+
+
+# =============================================================================
+# BUG EXPOSURE TESTS - agent_logic return type validation
+#
+# CLEAR BUG: None produces confusing "None" string in response
+# DEBATABLE: int/list/dict conversion - could be intentional flexibility
+# =============================================================================
+
+class TestAgentLogicReturnTypeValidation:
+    """
+    Tests for agent_logic return type handling.
+
+    Library converts any return type to string via str().
+    Whether this is a bug or intentional flexibility is debatable.
+    """
+
+    def test_agent_logic_returns_none_handled(self, sample_text_message):
+        """
+        Expected: agent_logic returning None should return error or empty response.
+
+        CLEAR BUG: Library shows literal "None" in response text.
+        This is confusing to users - None should produce empty string.
+        """
+        bridge = SimpleAgentBridge(
+            agent_id="test-agent",
+            agent_logic=Mock(return_value=None)
+        )
+
+        response = bridge.handle_message(sample_text_message("Hello"))
+
+        # Should NOT contain literal "None" string
+        assert "None" not in response.content.text, (
+            f"Literal 'None' in response is confusing. "
+            f"Got: '{response.content.text}'. "
+            f"Cause: str(None) produces 'None'. "
+            f"Fix: Add `if result is None: result = ''` in handle_message()"
+        )
+
+    def test_agent_logic_returns_int_handled(self, sample_text_message):
+        """
+        Expected: agent_logic returning int should return error or be rejected.
+
+        DEBATABLE: Library converts int to string via str().
+        Could be intentional flexibility - some use cases return numbers.
+        """
+        bridge = SimpleAgentBridge(
+            agent_id="test-agent",
+            agent_logic=Mock(return_value=42)
+        )
+
+        response = bridge.handle_message(sample_text_message("Hello"))
+
+        # Should either error or have type validation
+        response_text = response.content.text
+        assert "error" in response_text.lower() or "type" in response_text.lower(), (
+            f"Expected error for non-string return type. "
+            f"Got: '{response_text}'. "
+            f"Cause: No type validation on agent_logic return value. "
+            f"Fix: Add `if not isinstance(result, str): raise TypeError`"
+        )
+
+    def test_agent_logic_returns_list_handled(self, sample_text_message):
+        """
+        Expected: agent_logic returning list should return error or be rejected.
+
+        DEBATABLE: Library converts list to string repr via str().
+        Shows "['item1', 'item2']" which is Python-specific and ugly.
+        """
+        bridge = SimpleAgentBridge(
+            agent_id="test-agent",
+            agent_logic=Mock(return_value=["item1", "item2"])
+        )
+
+        response = bridge.handle_message(sample_text_message("Hello"))
+
+        # Should NOT contain Python list repr
+        assert "['" not in response.content.text and "['item" not in response.content.text, (
+            f"Python list repr in response is wrong. "
+            f"Got: '{response.content.text}'. "
+            f"Cause: str([...]) produces repr. "
+            f"Fix: Validate agent_logic returns string type"
+        )
+
+    def test_agent_logic_returns_dict_handled(self, sample_text_message):
+        """
+        Expected: agent_logic returning dict should return error or be rejected.
+
+        DEBATABLE: Library converts dict to string repr via str().
+        Shows "{'key': 'value'}" which is Python-specific and ugly.
+        """
+        bridge = SimpleAgentBridge(
+            agent_id="test-agent",
+            agent_logic=Mock(return_value={"key": "value"})
+        )
+
+        response = bridge.handle_message(sample_text_message("Hello"))
+
+        # Should NOT contain Python dict repr
+        assert "{'" not in response.content.text and "{'key" not in response.content.text, (
+            f"Python dict repr in response is wrong. "
+            f"Got: '{response.content.text}'. "
+            f"Cause: str({...}) produces repr. "
+            f"Fix: Validate agent_logic returns string type"
         )

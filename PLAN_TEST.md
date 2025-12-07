@@ -10,14 +10,14 @@ Four-layer test strategy following Issue #7 specification.
 
 | Layer | Status | Passing | Failing (Bugs) | NotImplemented | Files |
 |-------|--------|---------|----------------|----------------|-------|
-| **Unit** | ⚠️ Partial | 126 | 11 | 5 | 5 files |
+| **Unit** | ⚠️ Partial | 130 | 18 | 5 | 5 files |
 | **Integration** | ✅ COMPLETE | 232 | 0 | 0 | 4 files |
 | **E2E** | ✅ COMPLETE | 191 | 0 | 0 | 9 files |
 | **Contract** | ⚠️ Partial | 46 | 0 | 27 | 3 files |
 
-**Total: 638 tests** (142 unit + 232 integration + 191 E2E + 73 contract)
-- **Passing: 595** (tests that verify implemented functionality)
-- **Failing: 11** (tests exposing library bugs - need fixes in nanda_core)
+**Total: 649 tests** (153 unit + 232 integration + 191 E2E + 73 contract)
+- **Passing: 599** (tests that verify implemented functionality)
+- **Failing: 18** (tests exposing library bugs - need fixes in nanda_core)
 - **NotImplementedError: 32** (tests for features not yet in nanda_core)
 
 ---
@@ -28,27 +28,28 @@ Four-layer test strategy following Issue #7 specification.
 
 | File | Passing | Failing | NotImpl | Coverage |
 |------|---------|---------|---------|----------|
-| `test_protocol_adapters.py` | 14 | 0 | 0 | A2A format, metadata, edge cases |
-| `test_protocol_router.py` | 21 | 8 | 0 | 5 routing patterns, priority, errors, **8 bug exposure tests** |
+| `test_protocol_adapters.py` | 14 | 4 | 0 | A2A format, metadata, edge cases, **4 return type bug tests** |
+| `test_protocol_router.py` | 21 | 11 | 0 | 5 routing patterns, priority, errors, **11 bug exposure tests** |
 | `test_agentfacts_parser.py` | 0 | 0 | 5 | ⏳ NOT IMPLEMENTED in nanda_core |
-| `test_mention_extraction_and_routing.py` | 49 | 3 | 0 | Standard/unicode formats, commands |
+| `test_mention_extraction_and_routing.py` | 53 | 3 | 0 | Standard/unicode formats, commands, edge cases |
 | `test_framework_adapters.py` | 31 | 0 | 0 | Required/optional params, formats |
 
 ### Detailed Breakdown
 
-#### Protocol Adapters (14 tests) ✅
+#### Protocol Adapters (18 tests: 14 passing, 4 failing)
 Tests REAL `SimpleAgentBridge` from nanda_core.
 - TestA2AMessageFormatting (4) - role, content type, agent ID prefix, non-text rejection
 - TestA2AMessageMetadata (4) - conversation ID, parent ID, unique message IDs
 - TestA2AErrorHandling (1) - exception handling
 - TestA2AEdgeCases (5) - empty, special chars, unicode, long text, whitespace
+- TestAgentLogicReturnTypeValidation (4) - **4 bug exposure tests for non-string returns**
 
-#### Protocol Router (29 tests: 21 passing, 8 failing)
+#### Protocol Router (32 tests: 21 passing, 11 failing)
 Tests REAL `SimpleAgentBridge.handle_message()` routing logic.
 - TestRegularMessageRouting (4) - agent_logic routing, telemetry
-- TestAtPrefixRouting (3) - @agent-id outgoing A2A (removed redundant test)
-- TestHashPrefixRouting (2) - #registry:server MCP
-- TestSlashPrefixRouting (3) - /command system commands
+- TestAtPrefixRouting (3) - @agent-id outgoing A2A
+- TestHashPrefixRouting (3) - #registry:server MCP + **1 bug exposure test**
+- TestSlashPrefixRouting (5) - /command system commands + **2 bug exposure tests**
 - TestIncomingA2ARouting (11) - FROM:/TO:/MESSAGE: format + **8 bug exposure tests**
 - TestRoutingPriority (3) - priority order verification
 - TestRoutingErrorHandling (3) - exceptions, non-text, conversation preservation
@@ -62,13 +63,13 @@ Concise placeholder tests awaiting library implementation.
 - test_optional_fields_supported - name, description, etc.
 - test_validation_errors - invalid input handling
 
-#### @mention Extraction & Routing (52 tests: 49 passing, 3 failing)
+#### @mention Extraction & Routing (56 tests: 53 passing, 3 failing)
 Tests REAL `SimpleAgentBridge` mention handling.
 - TestMentionStandardFormats (11) - simple, hyphens, underscores, numbers, dots, case, single char
-- TestMentionUnicodeFormats (5) - Chinese, Japanese, Cyrillic, French, Greek
+- TestMentionUnicodeFormats (10) - Chinese, Japanese, Cyrillic, Korean, Arabic, Hebrew, Thai, Hindi, French, Greek
 - TestMentionBoundaryConditions (5) - no body, whitespace only, @ alone, @ space, empty (**2 bug exposure tests**)
-- TestMentionPositionEdgeCases (3) - at start, not at start, email in message
-- TestMentionMessageContent (7) - special chars, unicode, newlines, tabs, long ID, long body, minimal
+- TestMentionPosition (3) - at start, in middle, email in body
+- TestMentionMessageContent (11) - special chars, unicode, newlines, tabs, long ID/body, **tab/newline separators, @@@/@ #**
 - TestMentionErrorHandling (1) - non-text content
 - TestCommandHelp (2) - header, lists all commands
 - TestCommandPing (2) - returns pong, ignores extra args
@@ -398,7 +399,7 @@ pytest -m "not slow"     # Skip slow tests
 - [x] E2E tests for real library code (RegistryClient, MCPRegistry, MCPClient)
 
 ### ⚠️ Test Implementation Status (Honest Assessment)
-- [x] Unit Tests - 126 passing + 11 failing (bugs) + 5 NotImplementedError (AgentFacts)
+- [x] Unit Tests - 130 passing + 18 failing (bugs) + 5 NotImplementedError (AgentFacts)
 - [x] Integration Tests - 232 passing
 - [x] E2E Tests - 191 passing
 - [x] Contract Tests - 46 passing + 27 NotImplementedError (SLIM, x402)
@@ -406,8 +407,9 @@ pytest -m "not slow"     # Skip slow tests
 - [x] HTTP error code coverage (400, 401, 403, 404, 500, 502, 503)
 - [x] Unicode/edge case coverage (12 languages including RTL scripts)
 - [x] Real library code testing (not just mocks)
-- [x] Bug exposure tests - 11 tests that FAIL to expose library bugs
+- [x] Bug exposure tests - 18 tests that FAIL to expose library issues (11 clear bugs, 7 debatable)
 - [x] Removed redundant tests, strengthened weak assertions
+- [x] Added 4 edge case tests for @mention separators and special character combinations
 
 ### Not Implemented in nanda_core (Tests Raise NotImplementedError)
 
@@ -428,47 +430,58 @@ pytest -m "not slow"     # Skip slow tests
 
 4. **x402 Protocol Not Implemented** (Issue #4): 17 contract tests raise NotImplementedError.
 
-### Library Bugs Discovered Through Testing (11 Failing Tests)
+### Library Issues Discovered Through Testing (18 Failing Tests)
 
-These tests **FAIL** to expose bugs in `nanda_core/core/agent_bridge.py`:
+These tests **FAIL** to expose potential issues in `nanda_core/core/agent_bridge.py`.
 
-#### @mention/Command Bugs (3 tests in test_mention_extraction_and_routing.py)
+**CLEAR BUGS** (11): Objectively wrong behavior - wasteful operations, malformed output
+**DEBATABLE** (7): Design decisions that may or may not be bugs - needs spec clarification
 
-| Failing Test | Input | Expected | Actual (Bug) |
-|--------------|-------|----------|--------------|
-| `test_whitespace_body_returns_invalid_format` | `@agent   ` | "Invalid format" | Sends whitespace |
-| `test_at_space_returns_invalid_format` | `@ ` | "Invalid format" | Looks up empty agent |
-| `test_command_with_newline_executes_correctly` | `/ping\ntest` | "Pong!" | "Unknown command" |
+#### @mention/Command Issues (3 tests in test_mention_extraction_and_routing.py)
 
-**Fixes Required:**
-- `_handle_agent_message()`: Add `if not message_text.strip(): return error`
-- `_handle_agent_message()`: Add `if not target_agent: return error`
-- `_handle_command()`: Use `split(None, 1)` instead of `split(" ", 1)`
+| Failing Test | Input | Category | Issue |
+|--------------|-------|----------|-------|
+| `test_at_space_returns_invalid_format` | `@ ` | **CLEAR BUG** | Looks up empty agent '' (wasteful) |
+| `test_whitespace_body_returns_invalid_format` | `@agent   ` | DEBATABLE | Sends whitespace - could be valid |
+| `test_command_with_newline_executes_correctly` | `/ping\ntest` | DEBATABLE | Newline handling is edge case |
 
-#### A2A Field Validation Bugs (5 tests in test_protocol_router.py)
+#### A2A Field Validation Issues (5 tests in test_protocol_router.py)
 
-| Failing Test | Input | Expected | Actual (Bug) |
-|--------------|-------|----------|--------------|
-| `test_empty_from_field_returns_error` | `FROM:\nTO: test\nMESSAGE: hi` | "Invalid" or "Error" | Processes with empty sender |
-| `test_empty_to_field_returns_error` | `FROM: sender\nTO:\nMESSAGE: hi` | "Invalid" or "Error" | Processes with empty recipient |
-| `test_all_empty_a2a_fields_returns_error` | `FROM:\nTO:\nMESSAGE:` | "Invalid" or "Error" | Processes all empty fields |
-| `test_whitespace_from_field_returns_error` | `FROM:   \nTO: test\nMESSAGE: hi` | "Invalid" or "Error" | Processes whitespace sender |
-| `test_whitespace_to_field_returns_error` | `FROM: sender\nTO:   \nMESSAGE: hi` | "Invalid" or "Error" | Processes whitespace recipient |
+All **CLEAR BUGS** - produce malformed responses like `Response to : ` with dangling colon.
 
-**Fixes Required:**
-- `_handle_incoming_a2a()`: Add `if not sender.strip(): return error`
-- `_handle_incoming_a2a()`: Add `if not recipient.strip(): return error`
-- `_handle_incoming_a2a()`: Validate all required fields are non-empty before processing
+| Failing Test | Input | Issue |
+|--------------|-------|-------|
+| `test_empty_from_field_returns_error` | `FROM:\nTO: test\nMESSAGE: hi` | Empty sender produces malformed response |
+| `test_empty_to_field_returns_error` | `FROM: sender\nTO:\nMESSAGE: hi` | Empty recipient accepted |
+| `test_all_empty_a2a_fields_returns_error` | `FROM:\nTO:\nMESSAGE:` | All empty fields processed |
+| `test_whitespace_from_field_returns_error` | `FROM:   \nTO: test\nMESSAGE: hi` | Whitespace sender produces `Response to : ` |
+| `test_whitespace_to_field_returns_error` | `FROM: sender\nTO:   \nMESSAGE: hi` | Whitespace recipient accepted |
 
-#### A2A Format Detection Bugs (3 tests in test_protocol_router.py)
+#### Routing Edge Case Issues (6 tests in test_protocol_router.py)
 
-| Failing Test | Input | Expected | Actual (Bug) |
-|--------------|-------|----------|--------------|
-| `test_lowercase_a2a_format_detected` | `from: sender\nto: test\nmessage: hi` | Detected as A2A | Treated as regular message |
-| `test_wrong_order_a2a_format_detected` | `TO: test\nFROM: sender\nMESSAGE: hi` | Detected as A2A | Treated as regular message |
-| `test_mcp_empty_server_returns_invalid_format` | `#registry: query` | "Invalid format" | Looks up empty server |
+| Failing Test | Input | Category | Issue |
+|--------------|-------|----------|-------|
+| `test_mcp_empty_server_returns_invalid_format` | `#registry: query` | **CLEAR BUG** | Looks up empty server '' |
+| `test_double_hash_parsed_correctly` | `##smithery:weather` | **CLEAR BUG** | Includes # in registry name |
+| `test_double_slash_parsed_correctly` | `//help` | **CLEAR BUG** | Includes / in command name |
+| `test_slash_alone_returns_helpful_error` | `/` | **CLEAR BUG** | Shows "Unknown command: ." |
+| `test_lowercase_a2a_format_detected` | `from: sender\nto: test\nmessage: hi` | DEBATABLE | Case-sensitive - may be by design |
+| `test_wrong_order_a2a_format_detected` | `TO: test\nFROM: sender\nMESSAGE: hi` | DEBATABLE | Order-dependent - may be by design |
 
-**Fixes Required:**
-- `handle_message()`: Use case-insensitive check: `text.upper().startswith('FROM:')`
-- `handle_message()`: Parse A2A fields by searching anywhere, not just startswith
-- `_handle_mcp_message()`: Add `if not server_name.strip(): return error`
+#### agent_logic Return Type Issues (4 tests in test_protocol_adapters.py)
+
+| Failing Test | Return Value | Category | Issue |
+|--------------|--------------|----------|-------|
+| `test_agent_logic_returns_none_handled` | `None` | **CLEAR BUG** | Shows literal "None" - confusing |
+| `test_agent_logic_returns_int_handled` | `42` | DEBATABLE | Shows "42" - could be flexibility |
+| `test_agent_logic_returns_list_handled` | `["item1"]` | DEBATABLE | Shows Python repr - ugly but works |
+| `test_agent_logic_returns_dict_handled` | `{"k": "v"}` | DEBATABLE | Shows Python repr - ugly but works |
+
+---
+
+### Summary: Clear Bugs vs Debatable
+
+| Category | Count | Examples |
+|----------|-------|----------|
+| **CLEAR BUGS** | 11 | Empty lookups (2), malformed A2A responses (5), None→"None" (1), prefix parsing (3) |
+| **DEBATABLE** | 7 | Case/order sensitivity (2), type coercion (3), whitespace (1), newline (1) |
