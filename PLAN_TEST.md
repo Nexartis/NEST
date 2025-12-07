@@ -30,7 +30,7 @@ Four-layer test strategy following Issue #7 specification.
 |------|---------|---------|---------|----------|
 | `test_protocol_adapters.py` | 14 | 4 | 0 | A2A format, metadata, edge cases, **4 return type bug tests** |
 | `test_protocol_router.py` | 21 | 11 | 0 | 5 routing patterns, priority, errors, **11 bug exposure tests** |
-| `test_agentfacts_parser.py` | 0 | 0 | 5 | ⏳ NOT IMPLEMENTED in nanda_core |
+| `test_agentfacts_parser.py` | 0 | 0 | 5 | ⏳ PLACEHOLDER - AgentFacts not defined (see python_a2a.AgentCard) |
 | `test_mention_extraction_and_routing.py` | 53 | 3 | 0 | Standard/unicode formats, commands, edge cases |
 | `test_framework_adapters.py` | 38 | 6 | 0 | Params, validation, behavior, **6 bug exposure tests** |
 
@@ -54,14 +54,13 @@ Tests REAL `SimpleAgentBridge.handle_message()` routing logic.
 - TestRoutingPriority (3) - priority order verification
 - TestRoutingErrorHandling (3) - exceptions, non-text, conversation preservation
 
-#### AgentFacts Parser (5 tests) ⏳ NOT IMPLEMENTED
-**All tests raise NotImplementedError** - AgentFacts parser does not exist in nanda_core.
-Concise placeholder tests awaiting library implementation.
-- test_parse_agent_facts_exists - parser function should exist
-- test_agentfacts_class_exists - dataclass should exist
-- test_required_field_agent_id - agent_id required
-- test_optional_fields_supported - name, description, etc.
-- test_validation_errors - invalid input handling
+#### AgentFacts Parser (5 tests) ⏳ PLACEHOLDER - FEATURE NOT DEFINED
+**All tests raise NotImplementedError** - documents that AgentFacts is undefined.
+- TestAgentFactsPlaceholder (5) - specification needed, AgentCard distinction, use case, location, parsing requirements
+
+**Note**: "AgentFacts" is mentioned but not defined. The python_a2a library provides `AgentCard` with:
+name, description, url, version, authentication, capabilities, skills, provider, documentation_url.
+If AgentFacts is needed, a specification must be created first.
 
 #### @mention Extraction & Routing (56 tests: 53 passing, 3 failing)
 Tests REAL `SimpleAgentBridge` mention handling.
@@ -401,7 +400,7 @@ pytest -m "not slow"     # Skip slow tests
 - [x] E2E tests for real library code (RegistryClient, MCPRegistry, MCPClient)
 
 ### ⚠️ Test Implementation Status (Honest Assessment)
-- [x] Unit Tests - 126 passing + 24 failing (bugs) + 5 NotImplementedError (AgentFacts)
+- [x] Unit Tests - 126 passing + 24 failing (bugs) + 5 NotImplementedError (AgentFacts placeholder)
 - [x] Integration Tests - 232 passing
 - [x] E2E Tests - 191 passing
 - [x] Contract Tests - 46 passing + 27 NotImplementedError (SLIM, x402)
@@ -415,21 +414,22 @@ pytest -m "not slow"     # Skip slow tests
 - [x] Added parameter validation bug tests (agent_id=None, agent_logic=None, not callable)
 - [x] Added behavior verification tests (agent_logic called with correct params, return value used)
 - [x] Consolidated redundant optional parameter tests (8 tests → 2)
+- [x] AgentFacts tests - 5 placeholder tests documenting feature is undefined (use python_a2a.AgentCard)
 
 ### Not Implemented in nanda_core (Tests Raise NotImplementedError)
 
-| Feature | Tests | GitHub Issue |
-|---------|-------|--------------|
-| AgentFacts Parser | 5 | Not filed |
+| Feature | Tests | Status |
+|---------|-------|--------|
+| AgentFacts | 5 | No specification (use python_a2a.AgentCard) |
 | SLIM Protocol | 10 | Issue #3 |
 | x402 Payments | 17 | Issue #4 |
 
-**Total: 32 tests** awaiting library implementation.
+**Total: 32 tests** awaiting specification or library implementation.
 
 ### Known Issues
 1. **MCP Package Dependency**: `nanda_core/core/mcp_client.py` imports `mcp.client.streamable_http` which doesn't exist in the installed `mcp` package. This is a library issue.
 
-2. **AgentFacts Parser Not Implemented**: 5 unit tests raise NotImplementedError. No GitHub issue filed yet.
+2. **AgentFacts Not Defined**: 5 placeholder tests document that "AgentFacts" has no specification. Consider using python_a2a.AgentCard instead.
 
 3. **SLIM Protocol Not Implemented** (Issue #3): 10 contract tests raise NotImplementedError.
 
