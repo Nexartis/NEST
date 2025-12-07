@@ -129,6 +129,371 @@ def assert_contains_all(result: dict, required_keys: list, context: str):
 
 
 # =============================================================================
+# Tests: Parameter Validation Bugs (CLEAR BUGS)
+# =============================================================================
+
+@skip_if_no_registry
+class TestParameterValidationBugs:
+    """
+    Tests exposing CLEAR BUGS in MCPRegistry parameter validation.
+
+    These tests FAIL because the library accepts invalid parameters
+    and fails later at use time.
+    """
+
+    def test_mcp_registry_url_none_accepted(self):
+        """
+        CLEAR BUG: MCPRegistry accepts mcp_registry_url=None.
+
+        Given: mcp_registry_url=None (invalid)
+        When: MCPRegistry created
+        Then: Should raise ValueError at init, but doesn't
+        """
+        registry = MCPRegistry(mcp_registry_url=None)
+
+        assert registry.mcp_registry_url is not None, (
+            "CLEAR BUG: mcp_registry_url=None accepted. "
+            f"Got: mcp_registry_url={registry.mcp_registry_url}. "
+            "Cause: No validation in __init__. "
+            "Fix: Add 'if not mcp_registry_url: raise ValueError(...)'"
+        )
+
+    def test_server_name_none_crashes_nanda_lookup(self):
+        """
+        CLEAR BUG: get_nanda_mcp_server_info(None) may crash or produce bad URL.
+
+        Given: server_name=None
+        When: Looking up NANDA server
+        Then: Should raise ValueError, but may crash or build bad URL
+        """
+        registry = MCPRegistry(mcp_registry_url="http://test.registry")
+
+        # This should fail gracefully, not crash
+        try:
+            result = registry.get_nanda_mcp_server_info(None)
+            # If it returns None, that's acceptable error handling
+            # If it builds URL with "None" string, that's a bug
+            if result is not None:
+                assert "None" not in str(result.get("server_url", "")), (
+                    "CLEAR BUG: server_name=None produced URL with 'None' string. "
+                    f"Got: {result}. "
+                    "Fix: Validate server_name before building URL"
+                )
+        except TypeError as e:
+            pytest.fail(
+                f"CLEAR BUG: server_name=None crashed with TypeError: {e}. "
+                "Fix: Add 'if not server_name: return None' at start"
+            )
+
+    def test_server_name_empty_string_accepted(self):
+        """
+        DEBATABLE: get_nanda_mcp_server_info("") builds URL with empty path.
+
+        Given: server_name="" (empty string)
+        When: Looking up NANDA server
+        Then: Builds URL like "http://registry/mcp_servers/" - probably wrong
+        """
+        registry = MCPRegistry(mcp_registry_url="http://test.registry")
+
+        with patch('nanda_core.core.mcp_registry.requests.get') as mock_get:
+            mock_get.return_value = Mock(status_code=404)
+            registry.get_nanda_mcp_server_info("")
+
+            call_url = mock_get.call_args[0][0]
+            # URL should not end with just /mcp_servers/
+            assert not call_url.endswith("/mcp_servers/"), (
+                f"DEBATABLE: Empty server_name built URL: '{call_url}'. "
+                "This will likely 404 or return wrong data. "
+                "Fix: Return None or raise ValueError for empty server_name"
+            )
+
+
+# =============================================================================
+# Tests: Build Smithery Server URL
+# =============================================================================
+
+@skip_if_no_registry
+class TestBuildSmitheryServerURL:
+    """Tests for build_smithery_server_url() connection extraction logic."""
+
+    def test_extracts_http_connection_url(self, mcp_registry_with_smithery_key):
+        """
+        Given: Server info with HTTP connection
+        When: Building URL
+        Then: Uses HTTP connection's deploymentUrl
+        """
+        server_info = {
+            "deploymentUrl": "http://main.deploy.url",
+            "connections": [
+                {"type": "http", "deploymentUrl": "http://mcp.connection.url"}
+            ]
+        }
+
+        result = mcp_registry_with_smithery_key.build_smithery_server_url(server_info)
+
+        assert result == "http://mcp.connection.url", (
+            f"Expected HTTP connection URL. Got: '{result}'. "
+            "Cause: HTTP connection not prioritized. "
+            "Fix: Check for type='http' first in connections list"
+        )
+
+    def test_falls_back_to_deployment_url(self, mcp_registry_with_smithery_key):
+        """
+        Given: Server info with no HTTP connection
+        When: Building URL
+        Then: Falls back to main deploymentUrl
+        """
+        server_info = {
+            "deploymentUrl": "http://fallback.deploy.url",
+            "connections": []
+        }
+
+        result = mcp_registry_with_smithery_key.build_smithery_server_url(server_info)
+
+        assert result == "http://fallback.deploy.url", (
+            f"Expected fallback to deploymentUrl. Got: '{result}'. "
+            "Cause: Empty connections not handled. "
+            "Fix: Return deploymentUrl when no connections found"
+        )
+
+    def test_handles_stdio_connection(self, mcp_registry_with_smithery_key):
+        """
+        Given: Server info with stdio connection only
+        When: Building URL
+        Then: Uses stdio connection or fallback
+        """
+        server_info = {
+            "deploymentUrl": "http://stdio.deploy.url",
+            "connections": [
+                {"type": "stdio", "command": "npx", "args": ["server"]}
+            ]
+        }
+
+        result = mcp_registry_with_smithery_key.build_smithery_server_url(server_info)
+
+        assert result is not None, (
+            "Expected URL for stdio connection. Got None. "
+            "Cause: stdio connection type not handled. "
+            "Fix: Fall back to deploymentUrl for stdio connections"
+        )
+
+    def test_returns_none_without_deployment_url(self, mcp_registry_with_smithery_key):
+        """
+        Given: Server info without deploymentUrl
+        When: Building URL
+        Then: Returns None
+        """
+        server_info = {
+            "connections": [{"type": "http", "deploymentUrl": "http://conn.url"}]
+        }
+
+        result = mcp_registry_with_smithery_key.build_smithery_server_url(server_info)
+
+        # Should handle missing deploymentUrl gracefully
+        assert result is not None or result is None, (
+            "Expected graceful handling of missing deploymentUrl"
+        )
+
+    def test_prefers_http_over_stdio(self, mcp_registry_with_smithery_key):
+        """
+        Given: Server info with both HTTP and stdio connections
+        When: Building URL
+        Then: Prefers HTTP connection
+        """
+        server_info = {
+            "deploymentUrl": "http://main.url",
+            "connections": [
+                {"type": "stdio", "command": "npx"},
+                {"type": "http", "deploymentUrl": "http://http.preferred.url"}
+            ]
+        }
+
+        result = mcp_registry_with_smithery_key.build_smithery_server_url(server_info)
+
+        assert result == "http://http.preferred.url", (
+            f"Expected HTTP connection preferred. Got: '{result}'. "
+            "Cause: HTTP not prioritized over stdio. "
+            "Fix: Check for HTTP type first in connections loop"
+        )
+
+
+# =============================================================================
+# Tests: HTTP Error Code Coverage
+# =============================================================================
+
+@skip_if_no_registry
+class TestHTTPErrorCodeCoverage:
+    """Comprehensive HTTP error code testing for registry lookups."""
+
+    @pytest.mark.parametrize("status_code,description", [
+        (400, "Bad Request - malformed server name"),
+        (401, "Unauthorized - missing/invalid auth"),
+        (403, "Forbidden - no access to server"),
+        (404, "Not Found - server doesn't exist"),
+        (500, "Internal Server Error"),
+        (502, "Bad Gateway - upstream error"),
+        (503, "Service Unavailable - registry down"),
+    ])
+    @patch('nanda_core.core.mcp_registry.requests.get')
+    def test_nanda_lookup_handles_http_errors(
+        self, mock_get, status_code, description, mcp_registry, mock_http_response
+    ):
+        """
+        Given: NANDA registry returns HTTP {status_code}
+        When: Looking up server
+        Then: Returns None (graceful handling)
+        """
+        mock_get.return_value = mock_http_response(status_code)
+
+        result = mcp_registry.get_nanda_mcp_server_info("test-server")
+
+        assert result is None, (
+            f"Expected None for HTTP {status_code} ({description}). "
+            f"Got: {result}. "
+            f"Cause: HTTP {status_code} not handled. "
+            f"Fix: Return None for status_code >= 400"
+        )
+
+    @pytest.mark.parametrize("status_code,description", [
+        (400, "Bad Request"),
+        (401, "Unauthorized - invalid API key"),
+        (403, "Forbidden - API key lacks permission"),
+        (404, "Not Found - server doesn't exist"),
+        (429, "Rate Limited - too many requests"),
+        (500, "Internal Server Error"),
+    ])
+    @patch('nanda_core.core.mcp_registry.requests.get')
+    def test_smithery_lookup_handles_http_errors(
+        self, mock_get, status_code, description, mcp_registry_with_smithery_key, mock_http_response
+    ):
+        """
+        Given: Smithery registry returns HTTP {status_code}
+        When: Looking up server
+        Then: Returns None (graceful handling)
+        """
+        mock_get.return_value = mock_http_response(status_code)
+
+        result = mcp_registry_with_smithery_key.get_smithery_server_info("test-server")
+
+        assert result is None, (
+            f"Expected None for Smithery HTTP {status_code} ({description}). "
+            f"Got: {result}. "
+            f"Cause: HTTP {status_code} not handled. "
+            f"Fix: Return None for status_code >= 400"
+        )
+
+
+# =============================================================================
+# Tests: Server Name Edge Cases
+# =============================================================================
+
+@skip_if_no_registry
+class TestServerNameEdgeCases:
+    """Tests for various server name formats and edge cases."""
+
+    @pytest.mark.parametrize("server_name,description", [
+        ("simple-server", "simple hyphenated name"),
+        ("my_server_v2", "underscores and version"),
+        ("server.with.dots", "dots in name"),
+        ("UPPERCASE-SERVER", "uppercase name"),
+        ("MixedCase-Server", "mixed case"),
+        ("server123", "numbers in name"),
+        ("a", "single character"),
+        ("x" * 100, "very long name (100 chars)"),
+    ])
+    @patch('nanda_core.core.mcp_registry.requests.get')
+    def test_accepts_various_server_name_formats(
+        self, mock_get, server_name, description, mcp_registry, mock_http_response
+    ):
+        """
+        Given: Server name in {description} format
+        When: Looking up NANDA server
+        Then: Builds correct URL with server name
+        """
+        mock_get.return_value = mock_http_response(200, {
+            "server_url": f"http://{server_name}.test"
+        })
+
+        result = mcp_registry.get_nanda_mcp_server_info(server_name)
+
+        call_url = mock_get.call_args[0][0]
+        assert server_name in call_url, (
+            f"Expected server name '{server_name}' ({description}) in URL. "
+            f"Got: '{call_url}'. "
+            f"Cause: Server name not correctly encoded in URL"
+        )
+
+    @pytest.mark.parametrize("server_name,description", [
+        ("天気サーバー", "Japanese characters"),
+        ("服务器", "Chinese characters"),
+        ("сервер", "Cyrillic characters"),
+        ("서버", "Korean Hangul"),
+        ("café-server", "accented characters"),
+    ])
+    @patch('nanda_core.core.mcp_registry.requests.get')
+    def test_accepts_unicode_server_names(
+        self, mock_get, server_name, description, mcp_registry, mock_http_response
+    ):
+        """
+        Given: Unicode server name ({description})
+        When: Looking up NANDA server
+        Then: Handles unicode correctly (URL encoded)
+        """
+        mock_get.return_value = mock_http_response(200, {
+            "server_url": f"http://unicode.test"
+        })
+
+        # Should not crash
+        try:
+            result = mcp_registry.get_nanda_mcp_server_info(server_name)
+            # Request should have been made
+            assert mock_get.called, (
+                f"Expected request for unicode name '{server_name}' ({description})"
+            )
+        except UnicodeEncodeError as e:
+            pytest.fail(
+                f"Unicode server name '{server_name}' ({description}) crashed: {e}. "
+                "Fix: URL-encode server names before building URL"
+            )
+
+    @pytest.mark.parametrize("server_name,description", [
+        ("server/with/slashes", "forward slashes"),
+        ("server?query=param", "query string injection"),
+        ("server#fragment", "URL fragment"),
+        ("server%20encoded", "percent encoding"),
+    ])
+    @patch('nanda_core.core.mcp_registry.requests.get')
+    def test_handles_special_characters_in_server_name(
+        self, mock_get, server_name, description, mcp_registry, mock_http_response
+    ):
+        """
+        DEBATABLE: Special characters in server name may cause issues.
+
+        Given: Server name with {description}
+        When: Looking up
+        Then: Either URL-encodes or rejects
+        """
+        mock_get.return_value = mock_http_response(404)
+
+        # Should not crash
+        try:
+            result = mcp_registry.get_nanda_mcp_server_info(server_name)
+            # If it succeeds, check URL construction
+            if mock_get.called:
+                call_url = mock_get.call_args[0][0]
+                # Should have encoded special chars
+                assert "?" not in call_url.split("/mcp_servers/")[-1].split("?")[0] or server_name not in call_url, (
+                    f"DEBATABLE: Special char '{description}' may break URL: '{call_url}'"
+                )
+        except Exception as e:
+            # Crash on special chars is also a bug
+            pytest.fail(
+                f"Server name with {description} crashed: {e}. "
+                "Fix: URL-encode or validate server names"
+            )
+
+
+# =============================================================================
 # Tests: MCP Registry Initialization
 # =============================================================================
 

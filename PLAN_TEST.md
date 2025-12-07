@@ -11,13 +11,13 @@ Four-layer test strategy following Issue #7 specification.
 | Layer | Status | Passing | Failing (Bugs) | NotImplemented | Files |
 |-------|--------|---------|----------------|----------------|-------|
 | **Unit** | ⚠️ Partial | 126 | 24 | 5 | 5 files |
-| **Integration** | ⚠️ Partial | 236 | 6 | 0 | 4 files |
+| **Integration** | ⚠️ Partial | 271 | 9 | 0 | 4 files |
 | **E2E** | ✅ COMPLETE | 191 | 0 | 0 | 9 files |
 | **Contract** | ⚠️ Partial | 46 | 0 | 27 | 3 files |
 
-**Total: 661 tests** (155 unit + 242 integration + 191 E2E + 73 contract)
-- **Passing: 599** (tests that verify implemented functionality)
-- **Failing: 30** (tests exposing library bugs - need fixes in nanda_core)
+**Total: 699 tests** (155 unit + 280 integration + 191 E2E + 73 contract)
+- **Passing: 634** (tests that verify implemented functionality)
+- **Failing: 33** (tests exposing library bugs - need fixes in nanda_core)
 - **NotImplementedError: 32** (tests for features not yet in nanda_core)
 
 ---
@@ -98,7 +98,7 @@ Tests REAL `SimpleAgentBridge` initialization, validation, and behavior.
 |------|-------|---------|----------|
 | `test_protocol_communication_flows.py` | 31 | 0 | A2A routing, registry lookup, message sending |
 | `test_registry_client.py` | 82 | 0 | Registration, lookup, search, health, HTTP errors, Unicode (14 languages) |
-| `test_mcp_integration.py` | 37 | 0 | NANDA/Smithery lookups, URL building, MCP client |
+| `test_mcp_integration.py` | 75 | 3 | NANDA/Smithery lookups, URL building, **3 bug exposure tests** |
 | `test_framework_adapter_bridge.py` | 81 | 6 | NANDA adapter, bridge creation, lifecycle, **6 bug exposure tests** |
 
 ### Detailed Breakdown
@@ -125,7 +125,11 @@ Tests REAL `SimpleAgentBridge` initialization, validation, and behavior.
 - TestHTTPErrorCodeCoverage (13) - 400, 401, 403, 404, 500, 502, 503 for register/lookup
 - TestAgentIDEdgeCases (21) - Unicode (14 languages: Chinese, Japanese, Korean, Arabic, Hebrew, Thai, Hindi, Cyrillic, French, Greek, emoji), boundary values, URL special chars
 
-#### MCP Integration (37 tests)
+#### MCP Integration (75 tests: 72 passing, 3 failing)
+- TestParameterValidationBugs (3) - **1 CLEAR BUG** (url=None), **2 DEBATABLE** (server_name validation)
+- TestBuildSmitheryServerURL (5) - HTTP extraction, fallback, stdio, missing URL, **1 BUG** (HTTP priority)
+- TestHTTPErrorCodeCoverage (13) - NANDA errors (7 codes), Smithery errors (6 codes including 429)
+- TestServerNameEdgeCases (17) - 8 formats, 5 unicode languages, 4 special characters
 - TestMCPRegistryInitialization (4) - URL storage, defaults, Smithery key
 - TestNANDAMCPServerLookup (5) - endpoint calls, success, 404, network error, endpoint field
 - TestSmitheryMCPServerLookup (4) - API key requirement, endpoint, auth header, response
@@ -438,12 +442,12 @@ pytest -m "not slow"     # Skip slow tests
 
 4. **x402 Protocol Not Implemented** (Issue #4): 17 contract tests raise NotImplementedError.
 
-### Library Issues Discovered Through Testing (30 Failing Tests)
+### Library Issues Discovered Through Testing (33 Failing Tests)
 
-These tests **FAIL** to expose potential issues in `nanda_core/core/agent_bridge.py` and `nanda_core/core/adapter.py`.
+These tests **FAIL** to expose potential issues in `nanda_core/core/agent_bridge.py`, `nanda_core/core/adapter.py`, and `nanda_core/core/mcp_registry.py`.
 
-**CLEAR BUGS** (19): Objectively wrong behavior - no validation, wasteful operations, malformed output
-**DEBATABLE** (11): Design decisions that may or may not be bugs - needs spec clarification
+**CLEAR BUGS** (21): Objectively wrong behavior - no validation, wasteful operations, malformed output
+**DEBATABLE** (12): Design decisions that may or may not be bugs - needs spec clarification
 
 #### @mention/Command Issues (3 tests in test_mention_extraction_and_routing.py)
 
@@ -511,11 +515,21 @@ No validation at init time in NANDA class - passes invalid params to SimpleAgent
 | `test_negative_port_accepted` | `port=-1` | DEBATABLE | Invalid port accepted, fails at server start |
 | `test_port_above_max_accepted` | `port=70000` | DEBATABLE | Out of range port accepted |
 
+#### MCP Registry Issues (3 tests in test_mcp_integration.py)
+
+No validation in MCPRegistry - accepts None URLs, empty server names, incorrect connection prioritization.
+
+| Failing Test | Input | Category | Issue |
+|--------------|-------|----------|-------|
+| `test_mcp_registry_url_none_accepted` | `mcp_registry_url=None` | **CLEAR BUG** | None accepted, fails at lookup |
+| `test_server_name_empty_string_accepted` | `server_name=""` | DEBATABLE | Builds URL ending in /mcp_servers/ |
+| `test_prefers_http_over_stdio` | Mixed connections | **CLEAR BUG** | stdio preferred over HTTP |
+
 ---
 
 ### Summary: Clear Bugs vs Debatable
 
 | Category | Count | Examples |
 |----------|-------|----------|
-| **CLEAR BUGS** | 19 | No validation (8), empty lookups (2), malformed A2A responses (5), None→"None" (1), prefix parsing (3) |
-| **DEBATABLE** | 11 | Case/order sensitivity (2), type coercion (3), whitespace/empty (3), newline (1), port range (2) |
+| **CLEAR BUGS** | 21 | No validation (10), empty lookups (2), malformed A2A responses (5), None→"None" (1), prefix parsing (3) |
+| **DEBATABLE** | 12 | Case/order sensitivity (2), type coercion (3), whitespace/empty (4), newline (1), port range (2) |
