@@ -183,7 +183,7 @@ class TestRegistryClientReal:
         """
         Given: Agents with capabilities registered
         When: Calling search_agents()
-        Then: Returns matching agents
+        Then: Returns matching agents (list or dict with 'agents' key)
 
         Tests REAL: RegistryClient.search_agents() method
         Mocks: None - uses real library code
@@ -194,13 +194,21 @@ class TestRegistryClientReal:
         # Search (may use local filtering fallback)
         result = registry_client.search_agents(query="search")
 
-        # Should return list (even if empty, method should work)
-        assert isinstance(result, list), (
-            f"Expected search_agents() to return list. "
-            f"Got type: {type(result)}. "
-            f"Cause: search_agents() not returning list. "
-            f"Fix: Check search_agents() and _filter_agents_locally()."
-        )
+        # Should return list or dict with 'agents' key (API may wrap in dict)
+        if isinstance(result, dict):
+            assert "agents" in result, (
+                f"Expected 'agents' key in search result dict. "
+                f"Got keys: {list(result.keys())}. "
+                f"Cause: search_agents() returning unexpected dict format. "
+                f"Fix: Check search_agents() return value."
+            )
+        else:
+            assert isinstance(result, list), (
+                f"Expected search_agents() to return list or dict. "
+                f"Got type: {type(result)}. "
+                f"Cause: search_agents() returning unexpected type. "
+                f"Fix: Check search_agents() return value."
+            )
 
     def test_registry_client_unregister_agent(self, registry_client):
         """

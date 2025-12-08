@@ -30,6 +30,13 @@ def create_app() -> Flask:
     agents: Dict[str, Dict[str, Any]] = {}
     lock = threading.Lock()
 
+    # Error injection state for testing error handling
+    error_mode_register: Dict[str, Any] = {
+        "enabled": False,
+        "status_code": 500,
+        "message": "Simulated error"
+    }
+
     # =============================================================================
     # Health Endpoints
     # =============================================================================
@@ -84,7 +91,14 @@ def create_app() -> Flask:
         Returns:
             200: {"status": "registered", "agent_id": "string"}
             400: {"error": "Missing required field"}
+            5xx: Simulated error when error_mode is enabled
         """
+        # Check if error mode is enabled for testing error handling
+        if error_mode_register["enabled"]:
+            return jsonify({
+                "error": error_mode_register["message"]
+            }), error_mode_register["status_code"]
+
         data = request.json
         if not data:
             return jsonify({"error": "Request body required"}), 400
@@ -316,12 +330,29 @@ def create_app() -> Flask:
     # Test Control Endpoints (for E2E test setup/teardown)
     # =============================================================================
 
+    @app.route("/_set_error_mode", methods=["POST"])
+    def set_error_mode():
+        """
+        Enable/disable error mode for /register endpoint testing.
+
+        Request Body:
+            {"enabled": true/false, "status_code": 400/500/503, "message": "Error message"}
+
+        Use this to test how agents handle registry errors during registration.
+        """
+        data = request.json or {}
+        error_mode_register["enabled"] = data.get("enabled", False)
+        error_mode_register["status_code"] = data.get("status_code", 500)
+        error_mode_register["message"] = data.get("message", "Simulated error")
+        return jsonify({"status": "configured", "error_mode": error_mode_register})
+
     @app.route("/_reset", methods=["POST"])
     def reset():
         """Reset all data (for test cleanup)."""
         with lock:
             agents.clear()
             mcp_servers.clear()
+            error_mode_register["enabled"] = False  # Also reset error mode
         return jsonify({"status": "reset", "message": "All data cleared"})
 
     @app.route("/_seed", methods=["POST"])
