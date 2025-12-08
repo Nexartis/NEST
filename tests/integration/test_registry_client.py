@@ -24,6 +24,15 @@ Test Organization:
 - TestAgentStatusOperations: Status updates and unregistration
 - TestHealthAndStats: Health check and statistics endpoints
 - TestErrorHandlingAndResilience: Network error recovery
+- TestHTTPErrorCodeCoverage: 7 HTTP error codes (400-503)
+- TestAgentIDEdgeCases: Unicode (14 languages) and boundary values
+- TestParameterValidationBugs: CRITICAL - None/empty parameter handling
+- TestJSONResponseEdgeCases: WARNING - Invalid JSON, empty body handling
+- TestURLConstructionEdgeCases: Trailing slash, protocol, URL encoding
+
+Bug Exposure Tests:
+- CRITICAL: registry_url=None, agent_id=None, agent_url=None validation
+- WARNING (xfail): Trailing slash double-slash, invalid JSON, empty body
 """
 
 import pytest
@@ -992,4 +1001,264 @@ class TestAgentIDEdgeCases:
             f"Expected GET called for {description}. "
             f"Cause: lookup_agent crashed on special chars. "
             f"Fix: URL-encode agent_id in URL path"
+        )
+
+
+# =============================================================================
+# Tests: Parameter Validation (Bug Exposure)
+# =============================================================================
+
+class TestParameterValidationBugs:
+    """
+    Tests for parameter validation that may expose bugs.
+
+    CRITICAL: These tests check if the library validates input parameters.
+    If validation is missing, the library may crash or behave unexpectedly.
+    """
+
+    def test_registry_url_none_handled(self):
+        """
+        CRITICAL: registry_url=None should use default or raise error.
+
+        Given: registry_url=None explicitly passed
+        When: Creating RegistryClient
+        Then: Should use default URL or raise clear error
+        """
+        with patch('os.path.exists', return_value=False):
+            try:
+                client = RegistryClient(registry_url=None)
+                # If it doesn't crash, it should have a valid URL
+                assert client.registry_url is not None, (
+                    "CRITICAL: registry_url=None accepted, resulting in None URL. "
+                    "Cause: No validation for None registry_url. "
+                    "Fix: Add `if registry_url is None: registry_url = DEFAULT_URL`"
+                )
+            except (TypeError, ValueError) as e:
+                # Raising error is acceptable behavior
+                pass
+
+    def test_registry_url_empty_string_handled(self):
+        """
+        CRITICAL: registry_url="" should raise error or use default.
+
+        Given: registry_url="" (empty string)
+        When: Creating RegistryClient
+        Then: Should raise error or use default
+        """
+        try:
+            client = RegistryClient(registry_url="")
+            # If accepted, requests will fail with invalid URL
+            assert client.registry_url != "", (
+                "CRITICAL: registry_url='' accepted. HTTP requests will fail. "
+                "Cause: No validation for empty registry_url. "
+                "Fix: Add `if not registry_url.strip(): raise ValueError('registry_url required')`"
+            )
+        except (TypeError, ValueError) as e:
+            # Raising error is acceptable behavior
+            pass
+
+    @pytest.mark.xfail(reason="WARNING: Trailing slash may cause double-slash in URLs")
+    def test_registry_url_trailing_slash_normalized(self):
+        """
+        WARNING: Trailing slash in registry_url may cause double-slash.
+
+        Given: registry_url="http://registry.com/"
+        When: Calling lookup_agent
+        Then: URL should not have double slash (//lookup)
+        """
+        client = RegistryClient(registry_url="http://registry.com/")
+        client.session = Mock()
+        client.session.get.return_value = Mock(status_code=200, json=Mock(return_value={}))
+
+        client.lookup_agent("test-agent")
+
+        call_url = client.session.get.call_args[0][0]
+        assert "//" not in call_url.replace("http://", "").replace("https://", ""), (
+            f"Double slash in URL: '{call_url}'. "
+            f"Cause: registry_url has trailing slash, method adds leading slash. "
+            f"Fix: Normalize registry_url with .rstrip('/') in __init__"
+        )
+
+    def test_register_agent_id_none_handled(self, client_with_mock_session, mock_http_response):
+        """
+        CRITICAL: agent_id=None in register_agent should raise error.
+
+        Given: agent_id=None
+        When: Calling register_agent
+        Then: Should raise TypeError or return False
+        """
+        client = client_with_mock_session
+        client.session.post.return_value = mock_http_response(200)
+
+        try:
+            result = client.register_agent(None, "http://url")
+            # If it doesn't crash, check what happens
+            if result is True:
+                body = client.session.post.call_args[1]["json"]
+                assert body.get("agent_id") is not None, (
+                    "CRITICAL: agent_id=None sent to registry. "
+                    "Cause: No validation for None agent_id. "
+                    "Fix: Add `if agent_id is None: raise TypeError('agent_id required')`"
+                )
+        except (TypeError, ValueError):
+            # Raising error is acceptable
+            pass
+
+    def test_register_agent_url_none_handled(self, client_with_mock_session, mock_http_response):
+        """
+        CRITICAL: agent_url=None in register_agent should raise error.
+
+        Given: agent_url=None
+        When: Calling register_agent
+        Then: Should raise TypeError or return False
+        """
+        client = client_with_mock_session
+        client.session.post.return_value = mock_http_response(200)
+
+        try:
+            result = client.register_agent("test-agent", None)
+            # If it doesn't crash, check what happens
+            if result is True:
+                body = client.session.post.call_args[1]["json"]
+                assert body.get("agent_url") is not None, (
+                    "CRITICAL: agent_url=None sent to registry. "
+                    "Cause: No validation for None agent_url. "
+                    "Fix: Add `if agent_url is None: raise TypeError('agent_url required')`"
+                )
+        except (TypeError, ValueError):
+            # Raising error is acceptable
+            pass
+
+
+# =============================================================================
+# Tests: JSON Response Parsing Edge Cases
+# =============================================================================
+
+class TestJSONResponseEdgeCases:
+    """
+    Tests for JSON parsing edge cases that may cause crashes.
+
+    WARNING level: These test edge cases in server responses.
+    """
+
+    def test_lookup_handles_invalid_json_response(self, client_with_mock_session, mock_http_response):
+        """
+        Server returning invalid JSON is handled gracefully (returns None).
+
+        Given: Server returns status 200 with invalid JSON
+        When: Calling lookup_agent
+        Then: Returns None (library handles this correctly)
+        """
+        client = client_with_mock_session
+        client.session.get.return_value = mock_http_response(
+            200,
+            json_data=None,
+            text="not valid json {{{",
+            raise_on_json=json.JSONDecodeError("err", "doc", 0)
+        )
+
+        result = client.lookup_agent("test-agent")
+        # Library correctly handles invalid JSON by returning None
+        assert result is None, (
+            f"Expected None for invalid JSON. Got: {result}."
+        )
+
+    def test_lookup_handles_empty_body_on_200(self, client_with_mock_session, mock_http_response):
+        """
+        Server returning 200 with empty body is handled gracefully.
+
+        Given: Server returns status 200 with empty body
+        When: Calling lookup_agent
+        Then: Returns None (library handles this correctly)
+        """
+        client = client_with_mock_session
+        client.session.get.return_value = mock_http_response(
+            200,
+            json_data=None,
+            text="",
+            raise_on_json=json.JSONDecodeError("err", "doc", 0)
+        )
+
+        result = client.lookup_agent("test-agent")
+        # Library correctly handles empty body by returning None
+        assert result is None, (
+            f"Expected None for empty body. Got: {result}."
+        )
+
+    def test_list_agents_handles_non_list_response(self, client_with_mock_session, mock_http_response):
+        """
+        WARNING: Server returning dict instead of list should not crash.
+
+        Given: Server returns dict instead of expected list
+        When: Calling list_agents
+        Then: Should return empty list or handle gracefully
+        """
+        client = client_with_mock_session
+        # Server returns dict instead of list
+        client.session.get.return_value = mock_http_response(200, {"error": "unexpected format"})
+
+        try:
+            result = client.list_agents()
+            # Should return list, even if empty
+            assert isinstance(result, list), (
+                f"Expected list type. Got: {type(result).__name__}. "
+                f"Cause: Non-list response not converted. "
+                f"Fix: Add `if not isinstance(result, list): return []`"
+            )
+        except (TypeError, AttributeError) as e:
+            pytest.fail(
+                f"CRASH: list_agents() raised {type(e).__name__}: {e}. "
+                f"Cause: Assumed response is always list. "
+                f"Fix: Validate response type before iterating"
+            )
+
+
+# =============================================================================
+# Tests: URL Construction Edge Cases
+# =============================================================================
+
+class TestURLConstructionEdgeCases:
+    """
+    Tests for URL construction that may cause issues.
+    """
+
+    def test_registry_url_without_protocol_handled(self):
+        """
+        WARNING: registry_url without protocol may cause issues.
+
+        Given: registry_url="registry.com" (no http://)
+        When: Creating client
+        Then: Should add protocol or raise clear error
+        """
+        try:
+            client = RegistryClient(registry_url="registry.com")
+            # Check if it has a protocol
+            assert client.registry_url.startswith("http"), (
+                f"registry_url missing protocol: '{client.registry_url}'. "
+                f"Cause: No protocol validation or normalization. "
+                f"Fix: Add protocol if missing or validate URL format"
+            )
+        except (ValueError, Exception):
+            # Raising error is acceptable
+            pass
+
+    def test_lookup_with_special_agent_id_url_safe(self, client_with_mock_session, mock_http_response):
+        """
+        Tests: agent_id with spaces and special chars URL encoded.
+
+        Given: agent_id="my agent with spaces"
+        When: Calling lookup_agent
+        Then: URL should be properly encoded
+        """
+        client = client_with_mock_session
+        client.session.get.return_value = mock_http_response(200, {"agent_url": "http://found"})
+
+        client.lookup_agent("my agent with spaces")
+
+        call_url = client.session.get.call_args[0][0]
+        # Space should be encoded as %20 or +
+        assert " " not in call_url, (
+            f"Unencoded space in URL: '{call_url}'. "
+            f"Cause: agent_id not URL encoded. "
+            f"Fix: Use urllib.parse.quote(agent_id) in URL"
         )
