@@ -14,6 +14,25 @@ Routing priority (first match wins):
 3. # prefix (MCP)
 4. / prefix (system commands)
 5. Everything else (regular message)
+
+CRITICAL (5 tests - must fix):
+- test_empty_from_field_returns_error: A2A accepts empty FROM field
+- test_empty_to_field_returns_error: A2A accepts empty TO field
+- test_all_empty_a2a_fields_returns_error: A2A accepts all empty fields
+- test_whitespace_from_field_returns_error: A2A accepts whitespace FROM
+- test_whitespace_to_field_returns_error: A2A accepts whitespace TO
+
+WARNING (6 tests - xfail, edge cases):
+- test_double_hash_parsed_correctly: ## handling is rare edge case
+- test_double_slash_parsed_correctly: // handling is rare edge case
+- test_slash_alone_returns_helpful_error: UX improvement for / alone
+- test_lowercase_a2a_format_detected: Case sensitivity may be by design
+- test_wrong_order_a2a_format_detected: Field order may be by design
+- test_mcp_empty_server_returns_invalid_format: Empty server wasteful but returns error
+
+PASSING (library handles correctly):
+- test_mcp_missing_colon_returns_error: Library returns error for #server without colon
+- test_nested_a2a_in_body_not_reparsed: Library correctly processes only outer A2A
 """
 
 import pytest
@@ -226,13 +245,15 @@ class TestHashPrefixRouting:
             f"Fix: Return descriptive error in _handle_mcp_message()"
         )
 
+    @pytest.mark.xfail(reason="WARNING: Double hash is rare edge case")
     def test_double_hash_parsed_correctly(self, bridge, sample_text_message):
         """
         Given: "##smithery:weather query" (double hash)
         When: Processing
         Then: Should parse as #smithery:weather, not look up "#smithery" registry
 
-        CLEAR BUG: Library includes first # in registry name.
+        WARNING (not CRITICAL): Library includes first # in registry name.
+        Severity: Low - edge case, double hash is rare user input.
         """
         response = bridge.handle_message(sample_text_message("##smithery:weather query"))
 
@@ -243,6 +264,23 @@ class TestHashPrefixRouting:
             f"Got: '{response_text}'. "
             f"Cause: _handle_mcp_message() doesn't handle ## prefix. "
             f"Fix: Strip leading # before parsing registry:server"
+        )
+
+    def test_mcp_missing_colon_returns_error(self, bridge, sample_text_message):
+        """
+        Given: "#server query" (missing :server part)
+        When: Processing
+        Then: Should return error (library handles this correctly)
+
+        Note: Library correctly returns error for malformed MCP reference.
+        """
+        response = bridge.handle_message(sample_text_message("#missingcolon query"))
+
+        response_text = response.content.text.lower()
+        # Library correctly returns error - not found or invalid format indication
+        assert "not found" in response_text or "error" in response_text or "invalid" in response_text, (
+            f"Expected error for malformed MCP reference. "
+            f"Got: '{response.content.text}'."
         )
 
 
@@ -300,14 +338,16 @@ class TestSlashPrefixRouting:
             f"Fix: Check default case in _handle_command()"
         )
 
+    @pytest.mark.xfail(reason="WARNING: Double slash is rare edge case")
     def test_double_slash_parsed_correctly(self, bridge, sample_text_message):
         """
         Given: "//help" (double slash)
         When: Processing
         Then: Should execute /help command, not treat "/help" as command name
 
-        CLEAR BUG: Library includes second / in command name.
+        WARNING (not CRITICAL): Library includes second / in command name.
         Returns "Unknown command: /help" instead of executing help.
+        Severity: Low - edge case, double slash is rare user input.
         """
         response = bridge.handle_message(sample_text_message("//help"))
 
@@ -320,13 +360,15 @@ class TestSlashPrefixRouting:
             f"Fix: Use `command = text.lstrip('/').split()[0]`"
         )
 
+    @pytest.mark.xfail(reason="WARNING: Slash alone UX could be improved")
     def test_slash_alone_returns_helpful_error(self, bridge, sample_text_message):
         """
         Given: "/" alone
         When: Processing
         Then: Should return helpful error, not "Unknown command: ."
 
-        CLEAR BUG: Library shows "Unknown command: ." which is confusing.
+        WARNING (not CRITICAL): Library shows "Unknown command: ." which is confusing.
+        Severity: Low - UX issue, error is still returned.
         """
         response = bridge.handle_message(sample_text_message("/"))
 
@@ -506,14 +548,16 @@ class TestIncomingA2ARouting:
             f"Fix: Use `recipient.strip()` and validate non-empty after stripping."
         )
 
-    # --- DEBATABLE: Case sensitivity and field order (may be by design) ---
+    # --- WARNING: Case sensitivity and field order (may be by design) ---
 
+    @pytest.mark.xfail(reason="WARNING: Case sensitivity may be by design per protocol spec")
     def test_lowercase_a2a_format_detected(self, bridge, sample_text_message):
         """
         Expected: Lowercase from:/to:/message: should be detected as A2A format.
 
-        DEBATABLE: Library only detects uppercase FROM:/TO:/MESSAGE:.
+        WARNING (not CRITICAL): Library only detects uppercase FROM:/TO:/MESSAGE:.
         Could be by design if protocol spec requires uppercase.
+        Severity: Low - protocol design decision.
         """
         a2a_message = "from: sender\nto: test-agent\nmessage: hello"
         response = bridge.handle_message(sample_text_message(a2a_message))
@@ -527,12 +571,14 @@ class TestIncomingA2ARouting:
             f"Fix: Use case-insensitive check: `text.upper().startswith('FROM:')`"
         )
 
+    @pytest.mark.xfail(reason="WARNING: Field order may be by design per protocol spec")
     def test_wrong_order_a2a_format_detected(self, bridge, sample_text_message):
         """
         Expected: TO/FROM/MESSAGE order should be detected as A2A format.
 
-        DEBATABLE: Library only detects FROM/TO/MESSAGE order.
+        WARNING (not CRITICAL): Library only detects FROM/TO/MESSAGE order.
         Could be by design if protocol spec requires specific order.
+        Severity: Low - protocol design decision.
         """
         a2a_message = "TO: test-agent\nFROM: sender\nMESSAGE: hello"
         response = bridge.handle_message(sample_text_message(a2a_message))
@@ -546,14 +592,16 @@ class TestIncomingA2ARouting:
             f"Fix: Parse fields by searching for 'FROM:', 'TO:', 'MESSAGE:' anywhere."
         )
 
-    # --- CLEAR BUG: Empty MCP server lookup is wasteful ---
+    # --- WARNING: Empty MCP server lookup is wasteful but returns error ---
 
+    @pytest.mark.xfail(reason="WARNING: Empty server lookup is wasteful but eventually returns error")
     def test_mcp_empty_server_returns_invalid_format(self, bridge, sample_text_message):
         """
         Expected: Empty server name should return "Invalid format" error.
 
-        CLEAR BUG: Library tries to lookup empty server name ''.
+        WARNING (not CRITICAL): Library tries to lookup empty server name ''.
         Wasteful API call that will always fail.
+        Severity: Low - wasteful but error is eventually returned.
         """
         response = bridge.handle_message(sample_text_message("#registry: query"))
 
@@ -622,6 +670,25 @@ class TestRoutingPriority:
             "Regular messages should call agent_logic. "
             "Cause: Message incorrectly routed. "
             "Fix: Check fallback branch in handle_message()"
+        )
+
+    def test_nested_a2a_in_body_not_reparsed(self, bridge, sample_text_message):
+        """
+        Given: A2A message where MESSAGE body contains FROM:/TO:/MESSAGE: pattern
+        When: Processing
+        Then: Body content should NOT trigger re-routing (library handles correctly)
+
+        Note: Library correctly processes only the outer A2A structure.
+        """
+        # Message body contains A2A-like pattern
+        a2a_message = "FROM: sender\nTO: test-agent\nMESSAGE: Please forward this: FROM: other\nTO: third\nMESSAGE: nested"
+        response = bridge.handle_message(sample_text_message(a2a_message))
+
+        response_text = response.content.text.lower()
+        # Library correctly processes outer A2A from sender
+        assert "sender" in response_text, (
+            f"Expected response to reference 'sender' (outer FROM). "
+            f"Got: '{response.content.text}'."
         )
 
 

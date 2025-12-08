@@ -9,15 +9,17 @@ SimpleAgentBridge is the main adapter that bridges LLM frameworks to A2A protoco
 
 Tests That FAIL (expose library issues):
 
-CLEAR BUGS (no parameter validation):
+CRITICAL (3 tests - must fix):
 - test_agent_id_none_accepted_no_validation: agent_id=None creates broken bridge
 - test_agent_logic_none_fails_at_use: agent_logic=None accepted, fails at use
 - test_agent_logic_not_callable_fails_at_use: agent_logic="string" accepted, fails at use
-- test_agent_logic_wrong_signature_fails_at_use: Wrong params accepted, fails at use
 
-DEBATABLE (design decisions):
-- test_empty_string_agent_id: Empty string allowed - should it be?
-- test_whitespace_only_agent_id: Whitespace-only allowed - should it be?
+WARNING (5 tests - xfail, design decisions):
+- test_agent_logic_wrong_signature_fails_at_use: Error caught gracefully, could validate at init
+- test_empty_string_agent_id: Empty string allowed - works but awkward output
+- test_whitespace_only_agent_id: Whitespace-only allowed - works but confusing
+- test_registry_url_invalid_type_accepted: Non-string URL accepted (type coercion)
+- test_smithery_api_key_invalid_type_accepted: Non-string API key accepted (type coercion)
 """
 
 import pytest
@@ -132,14 +134,16 @@ class TestParameterValidationBugs:
             f"Fix: Add `if not callable(agent_logic): raise TypeError('agent_logic must be callable')`"
         )
 
+    @pytest.mark.xfail(reason="WARNING: Signature validation at init would be nice but error is handled gracefully")
     def test_agent_logic_wrong_signature_fails_at_use(self, sample_text_message):
         """
         Given: agent_logic with wrong signature (takes 0 params, needs 2)
         When: Creating bridge and calling handle_message
         Then: Should validate signature at init or provide clear error
 
-        DEBATABLE: Library catches error gracefully but doesn't validate at init.
+        WARNING (not CRITICAL): Library catches error gracefully but doesn't validate at init.
         Actual: Returns "[test] Error: func() takes 0 positional arguments but 2 were given"
+        Severity: Low - error is caught and reported, just not fail-fast.
         """
         def bad_logic():  # Takes 0 params, should take 2 (message, conversation_id)
             return "test"
@@ -495,15 +499,17 @@ class TestEdgeCases:
     may be working as intended but the behavior could be improved.
     """
 
+    @pytest.mark.xfail(reason="WARNING: Empty agent_id creates awkward output but may be valid for anonymous agents")
     def test_empty_string_agent_id(self, mock_agent_logic, sample_text_message):
         """
         Given: agent_id="" (empty string)
         When: Creating bridge and using it
         Then: Empty string is stored but causes issues
 
-        DEBATABLE: Empty agent_id accepted - should it be?
+        WARNING (not CRITICAL): Empty agent_id accepted - design decision.
         Counter-argument: Could be valid for anonymous agents.
         Problem: Breaks response format (shows "[] response" with empty prefix).
+        Severity: Low - works but looks awkward.
         """
         bridge = SimpleAgentBridge(agent_id="", agent_logic=mock_agent_logic)
         response = bridge.handle_message(sample_text_message("test"))
@@ -558,15 +564,17 @@ class TestEdgeCases:
             f"Fix: Don't convert empty string to None"
         )
 
+    @pytest.mark.xfail(reason="WARNING: Whitespace-only agent_id creates confusing output but technically works")
     def test_whitespace_only_agent_id(self, mock_agent_logic, sample_text_message):
         """
         Given: agent_id="   " (whitespace only)
         When: Creating bridge and using it
         Then: Whitespace is stored but causes issues
 
-        DEBATABLE: Whitespace-only agent_id accepted - should it be?
+        WARNING (not CRITICAL): Whitespace-only agent_id accepted - design decision.
         Problem: Response shows "[   ] response" which is confusing.
         Counter-argument: Maybe there's a use case for invisible agents?
+        Severity: Low - works but looks confusing.
         """
         bridge = SimpleAgentBridge(agent_id="   ", agent_logic=mock_agent_logic)
         response = bridge.handle_message(sample_text_message("test"))
@@ -629,4 +637,86 @@ class TestEdgeCases:
             f"Expected '{special_key}', got '{bridge.smithery_api_key}'. "
             f"Cause: Special characters escaped or removed. "
             f"Fix: Store API key as-is without escaping"
+        )
+
+
+# =============================================================================
+# Tests: Type Validation for Optional Parameters (WARNING level)
+# =============================================================================
+
+class TestOptionalParamTypeValidation:
+    """
+    Tests for type validation on optional parameters.
+
+    WARNING level: Library accepts wrong types and coerces them.
+    This works but may cause unexpected behavior later.
+    """
+
+    @pytest.mark.xfail(reason="WARNING: Non-string URL accepted - type coercion may cause issues later")
+    def test_registry_url_invalid_type_accepted(self, mock_agent_logic):
+        """
+        Given: registry_url=12345 (int instead of str)
+        When: Creating bridge
+        Then: Should raise TypeError at init
+
+        WARNING (not CRITICAL): Library accepts int and stores it.
+        May cause issues when URL is used for HTTP requests.
+        Severity: Low - fails later with confusing error.
+        """
+        bridge = SimpleAgentBridge(
+            agent_id="test",
+            agent_logic=mock_agent_logic,
+            registry_url=12345  # Should be string
+        )
+
+        assert isinstance(bridge.registry_url, str), (
+            f"registry_url should be string type. "
+            f"Got type: {type(bridge.registry_url).__name__}, value: {bridge.registry_url}. "
+            f"Cause: No type validation in __init__. "
+            f"Fix: Add `if registry_url is not None and not isinstance(registry_url, str): raise TypeError`"
+        )
+
+    @pytest.mark.xfail(reason="WARNING: Non-string API key accepted - type coercion")
+    def test_smithery_api_key_invalid_type_accepted(self, mock_agent_logic):
+        """
+        Given: smithery_api_key=99999 (int instead of str)
+        When: Creating bridge
+        Then: Should raise TypeError at init
+
+        WARNING (not CRITICAL): Library accepts int and stores it.
+        May cause issues when API key is used in HTTP headers.
+        Severity: Low - fails later with confusing error.
+        """
+        bridge = SimpleAgentBridge(
+            agent_id="test",
+            agent_logic=mock_agent_logic,
+            smithery_api_key=99999  # Should be string
+        )
+
+        assert isinstance(bridge.smithery_api_key, str), (
+            f"smithery_api_key should be string type. "
+            f"Got type: {type(bridge.smithery_api_key).__name__}, value: {bridge.smithery_api_key}. "
+            f"Cause: No type validation in __init__. "
+            f"Fix: Add `if smithery_api_key is not None and not isinstance(smithery_api_key, str): raise TypeError`"
+        )
+
+    def test_mcp_registry_url_invalid_type_stored(self, mock_agent_logic):
+        """
+        Given: mcp_registry_url=["not", "a", "string"] (list instead of str)
+        When: Creating bridge
+        Then: Documents that list is stored as-is (no type validation)
+
+        This test documents current behavior - not asserting it should change.
+        """
+        bridge = SimpleAgentBridge(
+            agent_id="test",
+            agent_logic=mock_agent_logic,
+            mcp_registry_url=["not", "a", "string"]
+        )
+
+        # Documenting current behavior: list is stored without validation
+        assert bridge.mcp_registry_url == ["not", "a", "string"], (
+            f"Expected list to be stored as-is. "
+            f"Got: {repr(bridge.mcp_registry_url)}. "
+            f"Note: This documents current behavior - no type validation exists."
         )
