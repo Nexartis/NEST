@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nanda.org/agent-passbook.schema.json",
+  "title": "Agent Passbook",
+  "type": "object",
+  "required": ["id", "agent", "issued_at", "entries"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique identifier for this passbook"
+    },
+    "agent": {
+      "type": "object",
+      "required": ["name", "unit"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "unit": { "type": "string" },
+        "contact": {
+          "type": "string",
+          "description": "Preferred contact channel for the issuing agent"
+        }
+      }
+    },
+    "issued_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO timestamp when the passbook was issued"
+    },
+    "entries": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["timestamp", "event", "authority"],
+        "additionalProperties": false,
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO timestamp for the event"
+          },
+          "event": {
+            "type": "string",
+            "description": "Short description of the event"
+          },
+          "authority": {
+            "type": "string",
+            "description": "Person or system authorizing the entry"
+          },
+          "notes": {
+            "type": "string",
+            "description": "Optional supporting detail"
+          }
+        }
+      }
+    },
+    "checksum": {
+      "type": "string",
+      "description": "Optional checksum for integrity verification"
+    }
+  }
+}
